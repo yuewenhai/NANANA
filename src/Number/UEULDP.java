@@ -22,7 +22,7 @@ public class UEULDP {
         }
 
         //为每一个数字生成bit vector
-        List<List<Integer>> bitVectors = new ArrayList<>();
+        int[][] bitVectors = new int[datasetSize][(int) ((high - low) / util.gap + 1)];
         encode(dataset, low, high, bitVectors);
 
         //多线程计算距离
@@ -34,12 +34,12 @@ public class UEULDP {
         return result;
     }
 
-    private void encode(List<Double> dataset, double low, double high, List<List<Integer>> bitVectors) {
-        List<Integer> tempBitVector;
-        for (double value : dataset) {
+    private void encode(List<Double> dataset, double low, double high, int[][] bitVectors) {
+        int[] tempBitVector;
+        for (int i = 0; i < dataset.size();i++) {
             // 在 util.generateBitVector 中区分使用哪种方法
-            tempBitVector = util.generateBitVector(value, low, high);
-            bitVectors.add(tempBitVector);
+            tempBitVector = util.generateBitVector(dataset.get(i), low, high);
+            bitVectors[i] = tempBitVector;
         }
     }
 

@@ -8,7 +8,7 @@ import java.util.*;
 
 public class Util {
     private final int n = 10;
-    private final double gap = 1.0;
+    public final double gap = 1.0;
     private final List<Integer> pseudorandomIndexes = new ArrayList<>();
 
     /**
@@ -111,18 +111,18 @@ public class Util {
      * @param method       使用方法
      * @return 返回bit vector
      */
-    public List<Integer> generateBitVector(List<Double> randomVector, double value, String method) {
+    public int[] generateBitVector(List<Double> randomVector, double value, String method) {
         RandomResponse rr = new RandomResponse();
         int size = randomVector.size();
-        List<Integer> bitVector = new ArrayList<>();
-        for (Double randomValue : randomVector) {
-            if (value >= randomValue) bitVector.add(1);
-            else bitVector.add(0);
+        int[] bitVector = new int[size];
+        for (int i = 0;i < size;i++) {
+            if (value >= randomVector.get(i)) bitVector[i] = 1;
+            else bitVector[i] = 0;
         }
         // DPRL.DPRL,使用coin flipping
         if (method.equals("DPRL")) {
             for (int i = 0; i < size; i++) {
-                if (rr.coinFlipping()) bitVector.set(i, 1 - bitVector.get(i));
+                if (rr.coinFlipping()) bitVector[i] = 1 - bitVector[i];
             }
         }
         // PRODPRL_V1,随机选择一位使用random response
@@ -134,19 +134,19 @@ public class Util {
             for (int i = 0; i < segmentNum; i++) {
                 int start = i * n;
                 int index = Math.min(start + rand.nextInt(n), size);//随机选择一位
-                if (rr.randomResponse()) bitVector.set(index, 1 - bitVector.get(index));
+                if (rr.randomResponse()) bitVector[index] = 1 - bitVector[index];
             }
         }
         // PRODPRL_V2,双方根据统一的伪随机序列选择RR的位使用random response
         if (method.equals("PRODPRL_V2")) {
             for (int index : pseudorandomIndexes) {
-                if (rr.randomResponse()) bitVector.set(index, 1 - bitVector.get(index));
+                if (rr.randomResponse()) bitVector[index] = 1 - bitVector[index];
             }
         }
         // PRODPRL_V3,满足ULDP
         if (method.equals("PRODPRL_V3")) {
             for (int i = 0; i < size; i++) {
-                if (bitVector.get(i) == 0 && rr.uRandomResponse()) bitVector.set(i, 1);
+                if (bitVector[i] == 0 && rr.uRandomResponse()) bitVector[i] = 1;
             }
         }
         return bitVector;
@@ -160,29 +160,29 @@ public class Util {
      * @param high  定义域最大值
      * @return 编码结果
      */
-    public List<Integer> generateBitVector(double value, double low, double high) {
+    public int[] generateBitVector(double value, double low, double high) {
         RandomResponse rr = new RandomResponse();
         int bitVectorSize = (int) ((high - low) / gap + 1);
-        List<Integer> bitVector = new ArrayList<>();
+        int[] bitVector = new int[bitVectorSize];
         boolean setted = false;
         for (int i = 0; i < bitVectorSize; i++) {
-            if (value >= low + i * gap || setted) bitVector.add(0);
+            if (value >= low + i * gap || setted) bitVector[i] = 0;
             else {
-                bitVector.add(1);
+                bitVector[i] = 1;
                 setted = true;
             }
         }
 
         for (int i = 0; i < bitVectorSize; i++) {
-            if (bitVector.get(i) == 0 && rr.uRandomResponse()) bitVector.set(i, 1);
+            if (bitVector[i] == 0 && rr.uRandomResponse()) bitVector[i] = 1;
         }
         return bitVector;
     }
 
-    public int calHammingDis(List<Integer> bitVector1, List<Integer> bitVector2) {
+    public int calHammingDis(int[] bitVector1, int[] bitVector2) {
         int hammingDis = 0;
-        for (int i = 0; i < Math.min(bitVector1.size(), bitVector2.size()); i++) {
-            if (!bitVector1.get(i).equals(bitVector2.get(i))) {
+        for (int i = 0; i < Math.min(bitVector1.length, bitVector2.length); i++) {
+            if (bitVector1[i] != bitVector2[i]) {
                 hammingDis += 1;
             }
         }
@@ -200,11 +200,11 @@ public class Util {
      * @param method     所使用的方法
      * @return 返回估计的距离
      */
-    public Double estimate(List<Integer> bitVector1, List<Integer> bitVector2, double low, double high, String method) {
+    public Double estimate(int[] bitVector1, int[] bitVector2, double low, double high, String method) {
         RandomResponse rr = new RandomResponse();
         double u = high - low;
         double hammingDis = calHammingDis(bitVector1, bitVector2) / 1.1;
-        int size = bitVector1.size();
+        int size = bitVector1.length;
         double estimateDis;
         switch (method) {
             case "DPRL" -> estimateDis = (hammingDis / size - (1 - Math.pow(rr.coinFlipProb, 2)) / 2) * u / Math.pow(rr.coinFlipProb, 2);
@@ -239,12 +239,12 @@ public class Util {
                 //estimateDis = Math.abs(estimateValue1 - estimateValue2);
             }
             case "DPRL.UEULDP" -> {
-                int bitVectorSize = bitVector1.size();
+                int bitVectorSize = bitVector1.length;
                 double sum1 = 0.0;
                 double sum2 = 0.0;
                 for (int i = 0;i < bitVectorSize;i++){
-                    if (bitVector1.get(i) == 1) sum1 += (low + i * gap);
-                    if (bitVector2.get(i) == 1) sum2 += (low + i * gap);
+                    if (bitVector1[i] == 1) sum1 += (low + i * gap);
+                    if (bitVector2[i] == 1) sum2 += (low + i * gap);
                 }
                 double prob = 1 / Math.exp(rr.epsilon);
                 estimateDis = Math.abs(sum1 - sum2) / (1 - prob);
@@ -255,10 +255,10 @@ public class Util {
         return estimateDis;
     }
 
-    private double estimateValue(List<Integer> bitVector, double high, double low, double epsilon) {
+    private double estimateValue(int[] bitVector, double high, double low, double epsilon) {
         double prob = 1 / Math.exp(epsilon);
         double u = high - low;
-        int size = bitVector.size();
+        int size = bitVector.length;
         int hammingWeight = 0;
         for (int bit : bitVector) {
             if (bit == 1) {
@@ -279,7 +279,7 @@ public class Util {
      * @param method      使用方法
      */
     public void calDistanceThreads(List<Double[]> distances, int datasetSize,
-                                   List<Double> dataset, List<List<Integer>> bitVectors,
+                                   List<Double> dataset, int[][] bitVectors,
                                    double low, double high, String method) {
         int threadNum = 8;//线程数量
 
@@ -296,7 +296,7 @@ public class Util {
                     Double[] tempDistances = new Double[2];
                     for (int k = j + 1; k < datasetSize; k++) {
                         dis = Math.abs(dataset.get(j) - dataset.get(k));
-                        esDis = estimate(bitVectors.get(j), bitVectors.get(k), low, high, method);
+                        esDis = estimate(bitVectors[j], bitVectors[k], low, high, method);
                         tempDistances[0] = dis;
                         tempDistances[1] = esDis;
                         synchronized (distances) {

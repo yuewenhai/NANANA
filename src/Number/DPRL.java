@@ -21,7 +21,7 @@ public class DPRL {
         int datasetSize = dataset.size();
 
         //为每一个数字生成bit vector
-        List<List<Integer>> bitVectors = new ArrayList<>();
+        int[][] bitVectors = new int[datasetSize][bitVectorSize];
         encode(bitVectorSize, method, dataset, low, high, bitVectors);
 
         //多线程计算距离
@@ -33,15 +33,36 @@ public class DPRL {
         return result;
     }
 
-    private void encode(int bitVectorSize, String method, List<Double> dataset, double low, double high, List<List<Integer>> bitVectors) {
-        List<Integer> tempBitVector;
+    private void encode(int bitVectorSize, String method, List<Double> dataset, double low, double high, int[][] bitVectors) {
         List<Double> randomVector = util.generateRandomVector(bitVectorSize, low, high);
         if (method.equals("PRODPRL_V2"))
             util.generatePseudorandomIndexes(bitVectorSize);
-        for (double value : dataset) {
-            // 在 util.generateBitVector 中区分使用哪种方法
-            tempBitVector = util.generateBitVector(randomVector, value, method);
-            bitVectors.add(tempBitVector);
+
+        int threadNum = 8;//线程数量
+        int datasetSize = dataset.size();
+        int numPerThread = Math.floorDiv(datasetSize, threadNum) + 1;
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < threadNum; i++) {
+            int start = i * numPerThread;
+            int end = Math.min(start + numPerThread, datasetSize);
+            Thread thread = new Thread(() -> {
+                for (int j = start;j < end;j++) {
+                    // 在 util.generateBitVector 中区分使用哪种方法
+                    int[] tempBitVector;
+                    tempBitVector = util.generateBitVector(randomVector, dataset.get(j), method);
+                    bitVectors[j] = tempBitVector;
+                }
+            });
+            thread.start();
+            threads.add(thread);
+        }
+
+        for (Thread thread : threads) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
     }
 
