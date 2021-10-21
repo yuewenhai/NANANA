@@ -270,8 +270,7 @@ public class Util {
     }
 
     /**
-     * @param euDis       真实距离矩阵
-     * @param estimateDis 估计距离矩阵
+     * @param distances   真实距离和估计距离, {[真实距离,估计距离]}
      * @param datasetSize 数据集大小
      * @param dataset     数据集
      * @param bitVectors  编码的bit vectors
@@ -279,7 +278,7 @@ public class Util {
      * @param high        数据集最大值
      * @param method      使用方法
      */
-    public void calDistanceThreads(List<List<Double>> euDis, List<List<Double>> estimateDis, int datasetSize,
+    public void calDistanceThreads(List<Double[]> distances, int datasetSize,
                                    List<Double> dataset, List<List<Integer>> bitVectors,
                                    double low, double high, String method) {
         int threadNum = 8;//线程数量
@@ -294,19 +293,15 @@ public class Util {
                 double esDis;
                 //只计算从该值往后的数之间的距离(不包括该数)
                 for (int j = start; j < end; j++) {
-                    List<Double> tempDisList = new ArrayList<>();
-                    List<Double> tempEstimateDisList = new ArrayList<>();
+                    Double[] tempDistances = new Double[2];
                     for (int k = j + 1; k < datasetSize; k++) {
                         dis = Math.abs(dataset.get(j) - dataset.get(k));
                         esDis = estimate(bitVectors.get(j), bitVectors.get(k), low, high, method);
-                        tempDisList.add(dis);
-                        tempEstimateDisList.add(esDis);
-                    }
-                    synchronized (euDis) {
-                        euDis.add(tempDisList);
-                    }
-                    synchronized (estimateDis) {
-                        estimateDis.add(tempEstimateDisList);
+                        tempDistances[0] = dis;
+                        tempDistances[1] = esDis;
+                        synchronized (distances) {
+                            distances.add(tempDistances);
+                        }
                     }
                 }
             });
@@ -329,34 +324,29 @@ public class Util {
      * Recall = TP / (TP + FN);
      * F1 = 2 * Precision * Recall / (Precision + Recall);
      *
-     * @param dis       真实距离矩阵
-     * @param esDis     估计距离矩阵
+     * @param disAndEsDis       真实距离矩阵\
      * @param threshold 距离阈值
      * @return {precision, recall, F1}
      */
-    public List<Double> calPrecisionRecallF1(List<List<Double>> dis, List<List<Double>> esDis, int threshold) {
+    public List<Double> calPrecisionRecallF1(List<Double[]> disAndEsDis, int threshold) {
         List<Double> result = new ArrayList<>();
         int TP = 0;
         int FP = 0;
         int TN = 0;
         int FN = 0;
-        int bound1 = Math.min(dis.size(), esDis.size());
-        for (int i = 0; i < bound1; i++) {
-            int bound2 = Math.min(dis.get(i).size(), esDis.get(i).size());
-            for (int j = 0; j < bound2; j++) {
-                double tempEuDis = dis.get(i).get(j);
-                double tempEsDis = esDis.get(i).get(j);
-                if (tempEuDis <= threshold) {
-                    if (tempEsDis <= threshold)
-                        TP += 1;
-                    else
-                        FN += 1;
-                } else {
-                    if (tempEsDis <= threshold)
-                        FP += 1;
-                    else
-                        TN += 1;
-                }
+        for (Double[] disAndEsDisArray : disAndEsDis) {
+            double tempEuDis = disAndEsDisArray[0];
+            double tempEsDis = disAndEsDisArray[1];
+            if (tempEuDis <= threshold) {
+                if (tempEsDis <= threshold)
+                    TP += 1;
+                else
+                    FN += 1;
+            } else {
+                if (tempEsDis <= threshold)
+                    FP += 1;
+                else
+                    TN += 1;
             }
         }
         double precision = (double) TP / (TP + FP);

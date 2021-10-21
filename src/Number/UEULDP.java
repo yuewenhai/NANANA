@@ -26,12 +26,11 @@ public class UEULDP {
         encode(dataset, low, high, bitVectors);
 
         //多线程计算距离
-        List<List<Double>> dis = new ArrayList<>();
-        List<List<Double>> estimateDis = new ArrayList<>();
-        util.calDistanceThreads(dis, estimateDis, datasetSize, dataset, bitVectors, low, high, "DPRL.UEULDP");
+        List<Double[]> dis = new ArrayList<>();
+        util.calDistanceThreads(dis, datasetSize, dataset, bitVectors, low, high, "DPRL.UEULDP");
 
         List<Double> result;
-        result = util.calPrecisionRecallF1(dis, estimateDis, threshold);
+        result = util.calPrecisionRecallF1(dis, threshold);
         return result;
     }
 

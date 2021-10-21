@@ -25,12 +25,11 @@ public class DPRL {
         encode(bitVectorSize, method, dataset, low, high, bitVectors);
 
         //多线程计算距离
-        List<List<Double>> dis = new ArrayList<>();
-        List<List<Double>> estimateDis = new ArrayList<>();
-        util.calDistanceThreads(dis, estimateDis, datasetSize, dataset, bitVectors, low, high, method);
+        List<Double[]> distances = new ArrayList<>();
+        util.calDistanceThreads(distances, datasetSize, dataset, bitVectors, low, high, method);
 
         List<Double> result;
-        result = util.calPrecisionRecallF1(dis, estimateDis, threshold);
+        result = util.calPrecisionRecallF1(distances, threshold);
         return result;
     }
 
