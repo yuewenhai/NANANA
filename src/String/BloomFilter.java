@@ -5,10 +5,14 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 
 import Number.RandomResponse;
 
 public class BloomFilter {
+    public final int wSize = 1;
+    public final int randomSeed = 42;
+
     public void experiment(String datasetName, String[] filenames, int datasetSize, int bitVectorSize,
                            int nGrams, int k, String[] attributes, String method, String key) {
         DatasetGeneration datasetGeneration = new DatasetGeneration();
@@ -30,6 +34,7 @@ public class BloomFilter {
                        int numHashFunction, String method, String key) {
         RandomResponse rr = new RandomResponse();
         BigInteger bitVectorSizeBig = new BigInteger(String.valueOf(bitVectorSize));
+
         for (int i = 0; i < datasets.size(); i++) {
             List<List<String>> iDataset = datasets.get(i);
             int iDatasetSize = iDataset.size();
@@ -63,6 +68,27 @@ public class BloomFilter {
                                 if (bitVector[q] == 0 && rr.uRandomResponse()) bitVector[q] = 1;
                             }
                         }
+                        if (method.equals("WXOR")) {
+                            for (int q = 0;q < bitVectorSize;q++){
+                                for (int count = 0;count < wSize;count++){
+                                    int position = (q + count) % bitVectorSize;
+                                    int next = (q + count + 1) % bitVectorSize;
+                                    if (bitVector[position] == bitVector[next]) bitVector[position] = 0;
+                                    else bitVector[position] = 1;
+                                }
+                            }
+                        }
+                        if (method.equals("RESAM")) {
+                            Random random = new Random(randomSeed);
+                            int[] newBitVector = new int[bitVectorSize];
+                            for (int q = 0;q < bitVectorSize;q++){
+                                int random1 = random.nextInt(bitVectorSize);
+                                int random2 = random.nextInt(bitVectorSize);
+                                if (bitVector[random1] == bitVector[random2]) newBitVector[q] = 0;
+                                else newBitVector[q] = 1;
+                            }
+                            bitVector = newBitVector;
+                        }
                         iBitVectors[k] = bitVector;
                     }
                 });
@@ -83,14 +109,29 @@ public class BloomFilter {
 
     public List<String> ngrams(int n, List<String> record) {
         List<String> ngrams = new ArrayList<>();
-        StringBuilder fix = new StringBuilder();
-        fix.append("_".repeat(Math.max(0, n - 1)));
-        String fixString = fix + list2String(record) + fix;
-        for (int i = 0; i < fixString.length() - n + 1; i++) {
-            ngrams.add(fixString.substring(i, i + n));
+        for (int i = 0; i < record.size(); i++) {
+            String tempStr = record.get(i);
+            if (isNumeric(tempStr)){
+                for (int j = 0;j < tempStr.length();j++){
+                    ngrams.add(String.valueOf(tempStr.charAt(j)));
+                }
+            }else{
+                for (int j = 0;j < tempStr.length() - n + 1;j++){
+                    ngrams.add(tempStr.substring(j, j + n));
+                }
+            }
         }
 
         return ngrams;
+    }
+
+    public boolean isNumeric(String str){
+        for (int i = 0;i < str.length();i++){
+            if (!Character.isDigit(str.charAt(i))){
+                return false;
+            }
+        }
+        return true;
     }
 
     public void calSimilarities(List<List<String>> dataset1, List<List<String>> dataset2, int[][] bitVectors1,
@@ -166,15 +207,14 @@ public class BloomFilter {
     public void storeResult(String datasetName, String[] filenames, int datasetSize, int bitVectorSize,
                             int nGrams, int k, String[] attributes, String method,
                             List<Double[]> similarities) {
-        StringBuilder resultFile = new StringBuilder(datasetName);
+        String filepath = "StringResult/" + method + "/";
         for (String filename : filenames) {
-            resultFile.append("-").append(filename, 0, filename.length() - 4);
+            filepath = filepath + filename.substring(0, filename.length() - 4);
         }
-        resultFile.append("-").append(datasetSize).append("-").append(bitVectorSize).append("-").append(nGrams).append("-").append(k);
+        filepath += "/";
         for (String attribute : attributes) {
-            resultFile.append("-").append(attribute);
+            filepath += attribute;
         }
-        String filepath = "StringResult/" + method;
         File fileDir = new File(filepath);
         if (!fileDir.exists()) {
             if (!fileDir.mkdirs()) {
@@ -182,6 +222,9 @@ public class BloomFilter {
                 return;
             }
         }
+        StringBuilder resultFile = new StringBuilder(datasetName);
+        resultFile.append("-").append(datasetSize).append("-").append(bitVectorSize).append("-").append(nGrams).append("-").append(k);
+
         int threadNum = 8;
         int numPerThread = Math.floorDiv(similarities.size(), threadNum) + 1;
         List<Thread> threads = new ArrayList<>();
@@ -218,16 +261,6 @@ public class BloomFilter {
                 e.printStackTrace();
             }
         }
-
-
-    }
-
-    public String list2String(List<String> list) {
-        StringBuilder stringBuilder = new StringBuilder();
-        for (String str : list) {
-            stringBuilder.append(str);
-        }
-        return stringBuilder.toString();
     }
 
     public static void main(String[] args) {
@@ -236,12 +269,14 @@ public class BloomFilter {
         String[][] attributes = {{"PERNAME2"},
                 {"PERNAME1", "PERNAME2"},
                 {"PERNAME1", "PERNAME2", "SEX"},
-                {"PERNAME1", "PERNAME2", "SEX", "DOB_DAY", "DOB_MON", "DOB_TEAR"},
-                {"PERSON_ID", "PERNAME1", "PERNAME2", "SEX", "DOB_DAY", "DOB_MON", "DOB_TEAR"}};
+                {"PERNAME1", "PERNAME2", "SEX", "DOB_YEAR"},
+                {"PERSON_ID", "PERNAME1", "PERNAME2", "SEX", "DOB_YEAR"}};
         String key = "";
         for (String[] tempAttributes : attributes) {
-            bloomFilter.experiment("Istat", filenames, 10000, 1000, 2, 30, tempAttributes, "Normal", key);
-            bloomFilter.experiment("Istat", filenames, 10000, 1000, 2, 30, tempAttributes, "ULDP", key);
+            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "Normal", key);
+            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "ULDP", key);
+            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "WXOR", key);
+            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "RESAM", key);
         }
     }
 }
