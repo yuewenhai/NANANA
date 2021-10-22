@@ -2,25 +2,37 @@ package String;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class DatasetGeneration {
-    List<List<String>> getDataset(String datasetName, int datasetSize){
+    public List<List<String>> getDataset(String datasetName, String filename, int datasetSize, String[] attributes){
         List<List<String>> dataset = new ArrayList<>();
-        String datasetFile = "dataset/" + datasetName;
-
+        String datasetFileFolder = "dataset/" + datasetName;
+        String datasetFile = datasetFileFolder + "/" + filename;
         File file = new File(datasetFile);
         if (!file.exists()) {
-            System.out.printf("数据集: %s 不存在%n", dataset);
+            System.out.printf("数据集: %s 不存在%n", datasetFile);
         }else {
             try (FileReader fr = new FileReader(file);
                  BufferedReader br = new BufferedReader(fr)) {
-                String line = br.readLine();
+                String[] datasetColumns = br.readLine().replace("\"", "").split(",");
+                int[] indexes = new int[attributes.length];
+                for (int i = 0;i < attributes.length;i++){
+                    for (int j = 0;j < datasetColumns.length;j++){
+                        if (datasetColumns[j].equals(attributes[i]))
+                            indexes[i] = j;
+                    }
+                }
                 int count = 0;
+                String line = br.readLine();
+                String[] lineArray;
                 while (line != null && count++ < datasetSize){
-                    List<String> lineArray = Arrays.stream(line.replace("\"", "").split(",")).toList();
-                    dataset.add(lineArray);
+                    List<String> dataLine = new ArrayList<>();
+                    lineArray = line.replace("\"", "").split(",");
+                    for (int index : indexes) {
+                        dataLine.add(lineArray[index]);
+                    }
+                    dataset.add(dataLine);
                     line = br.readLine();
                 }
             } catch (IOException e) {
