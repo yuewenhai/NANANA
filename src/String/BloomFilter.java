@@ -2,10 +2,7 @@ package String;
 
 import java.io.*;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 import Number.RandomResponse;
 
@@ -15,19 +12,32 @@ public class BloomFilter {
 
     public void experiment(String datasetName, String[] filenames, int datasetSize, int bitVectorSize,
                            int nGrams, int k, String[] attributes, String method, String key) {
+        System.out.println(method + "----------------------------");
         DatasetGeneration datasetGeneration = new DatasetGeneration();
         List<List<List<String>>> datasets = new ArrayList<>();
         for (String filename : filenames) {
             datasets.add(datasetGeneration.getDataset(datasetName, filename, datasetSize, attributes));
         }
 
+        System.out.println("encoding");
+        long startTime = System.currentTimeMillis();
         int[][][] bitVectors = new int[filenames.length][datasetSize][bitVectorSize];
         encode(bitVectorSize, datasets, bitVectors, nGrams, k, method, key);
+        long endTime = System.currentTimeMillis();
+        System.out.println("encoding 耗时:" + (double)(endTime - startTime) / 1000);
 
+        System.out.println("cal similarities");
+        startTime = System.currentTimeMillis();
         List<Double[]> similarities = new ArrayList<>();
         calSimilarities(datasets.get(0), datasets.get(1), bitVectors[0], bitVectors[1], similarities, nGrams);
+        endTime = System.currentTimeMillis();
+        System.out.println("cal similarities 耗时:" + (double)(endTime - startTime) / 1000);
 
+        System.out.println("store results");
+        startTime = System.currentTimeMillis();
         storeResult(datasetName, filenames, datasetSize, bitVectorSize, nGrams, k, attributes, method, similarities);
+        endTime = System.currentTimeMillis();
+        System.out.println("store results 耗时:" + (double)(endTime - startTime) / 1000);
     }
 
     public void encode(int bitVectorSize, List<List<List<String>>> datasets, int[][][] birVectors, int nGrams,
@@ -136,7 +146,7 @@ public class BloomFilter {
 
     public void calSimilarities(List<List<String>> dataset1, List<List<String>> dataset2, int[][] bitVectors1,
                                 int[][] bitVectors2, List<Double[]> similarities, int numGrams) {
-        int threadNum = 8;//线程数量
+        int threadNum = 9;//线程数量
         int dataset1Size = dataset1.size();
         int dataset2Size = dataset2.size();
         int numPerThread = Math.floorDiv(dataset1Size, threadNum) + 1;
@@ -160,6 +170,7 @@ public class BloomFilter {
                         }
                     }
                 }
+                System.out.printf("%s完成 %n", Thread.currentThread().toString());
             });
             thread.start();
             threads.add(thread);
@@ -266,13 +277,14 @@ public class BloomFilter {
     public static void main(String[] args) {
         BloomFilter bloomFilter = new BloomFilter();
         String[] filenames = {"census.csv", "cis.csv"};
-        String[][] attributes = {{"PERNAME2"},
+        String[][] attributes = {
                 {"PERNAME1", "PERNAME2"},
                 {"PERNAME1", "PERNAME2", "SEX"},
                 {"PERNAME1", "PERNAME2", "SEX", "DOB_YEAR"},
-                {"PERSON_ID", "PERNAME1", "PERNAME2", "SEX", "DOB_YEAR"}};
-        String key = "";
+                };
+        String key = "bloomfilter";
         for (String[] tempAttributes : attributes) {
+            System.out.println("--------------------------" + Arrays.toString(tempAttributes) + "----------------------------");
             bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "Normal", key);
             bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "ULDP", key);
             bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "WXOR", key);
