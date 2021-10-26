@@ -37,29 +37,5 @@ public enum HashFunction {
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             return new BigInteger("0");
         }
-//        switch (this.method) {
-//            case "SHA1" -> {
-//                MessageDigest messageDigest = null;
-//                try {
-//
-//                } catch (NoSuchAlgorithmException e) {
-//                    return "0";
-//                    e.printStackTrace();
-//                }
-//            }
-//            case "MD5" -> {
-//                MessageDigest messageDigest = null;
-//                try {
-//                    messageDigest = MessageDigest.getInstance("MD5");
-//                    messageDigest.update(gram.getBytes());
-//                    byte[] bytes = messageDigest.digest();
-//                    return 1;
-//                } catch (NoSuchAlgorithmException e) {
-//                    e.printStackTrace();
-//                }
-//                return 2;
-//            }
-//            default -> {return 0;}
-//        }
     }
 }

@@ -9,9 +9,10 @@ import Number.RandomResponse;
 public class BloomFilter {
     public final int wSize = 1;
     public final int randomSeed = 42;
+    public final int blockIndex = 1;
 
     public void experiment(String datasetName, String[] filenames, int datasetSize, int bitVectorSize,
-                           int nGrams, int k, String[] attributes, String method, String key) {
+                           int nGrams, int k, String[] attributes, String method, String key, String blockingMethod) {
         System.out.println(method + "----------------------------");
         DatasetGeneration datasetGeneration = new DatasetGeneration();
         List<List<List<String>>> datasets = new ArrayList<>();
@@ -26,10 +27,18 @@ public class BloomFilter {
         long endTime = System.currentTimeMillis();
         System.out.println("encoding 耗时:" + (double)(endTime - startTime) / 1000);
 
+        System.out.println("blocking");
+        startTime = System.currentTimeMillis();
+        List<Map<String, List<List<String>>>> blockDatasets = new ArrayList<>();
+        List<Map<String, List<List<Integer>>>> blockBitVectors = new ArrayList<>();
+        blocking(datasets, bitVectors, blockingMethod, blockDatasets, blockBitVectors);
+        endTime = System.currentTimeMillis();
+        System.out.println("blocking 耗时:" + (double)(endTime - startTime) / 1000);
+
         System.out.println("cal similarities");
         startTime = System.currentTimeMillis();
         List<Double[]> similarities = new ArrayList<>();
-        calSimilarities(datasets.get(0), datasets.get(1), bitVectors[0], bitVectors[1], similarities, nGrams);
+        calSimilarities(blockDatasets.get(0), blockDatasets.get(1), blockBitVectors.get(0), blockBitVectors.get(1), similarities, nGrams);
         endTime = System.currentTimeMillis();
         System.out.println("cal similarities 耗时:" + (double)(endTime - startTime) / 1000);
 
@@ -38,6 +47,101 @@ public class BloomFilter {
         storeResult(datasetName, filenames, datasetSize, bitVectorSize, nGrams, k, attributes, method, similarities);
         endTime = System.currentTimeMillis();
         System.out.println("store results 耗时:" + (double)(endTime - startTime) / 1000);
+    }
+
+    private void blocking(List<List<List<String>>> datasets, int[][][] bitVectors, String blockingMethod,
+                          List<Map<String, List<List<String>>>> blockDatasets,
+                          List<Map<String, List<List<Integer>>>> blockBitVectors) {
+        Map<String, List<List<String>>> blockDataset = new HashMap<>();
+        Map<String, List<List<Integer>>> blockBitVector = new HashMap<>();
+        for (int i = 0;i < datasets.size();i++){
+            List<List<String>> dataset = datasets.get(i);
+            List<List<String>> tempDataset;
+            List<List<Integer>> tempBitVector;
+            int[][] bitVector = bitVectors[i];
+            if (blockingMethod.equals("Soundex")) {
+                for (int j = 0; j < dataset.size(); j++) {
+                    List<String> record = dataset.get(j);
+                    int[] recordBitVector = bitVector[j];
+                    String pername2 = record.get(blockIndex);
+                    String soundex = generateSoundex(pername2);
+                    if (!blockDataset.containsKey(soundex)) {
+                        tempDataset = new ArrayList<>();
+                        tempDataset.add(record);
+                        blockDataset.put(soundex, tempDataset);
+                    } else {
+                        tempDataset = blockDataset.get(soundex);
+                        tempDataset.add(record);
+                    }
+                    if (!blockBitVector.containsKey(soundex)) {
+                        tempBitVector = new ArrayList<>();
+                        tempBitVector.add(array2List(recordBitVector));
+                        blockBitVector.put(soundex, tempBitVector);
+                    } else {
+                        tempBitVector = blockBitVector.get(soundex);
+                        tempBitVector.add(array2List(recordBitVector));
+                    }
+                }
+            }
+            blockDatasets.add(blockDataset);
+            blockBitVectors.add(blockBitVector);
+        }
+    }
+
+    private List<Integer> array2List(int[] recordBitVector) {
+        List<Integer> result = new ArrayList<>();
+        for (int value : recordBitVector){
+            result.add(value);
+        }
+
+        return result;
+    }
+
+    private String generateSoundex(String pername2) {
+        List<String> soundex = new ArrayList<>();
+
+        pername2 = pername2.toLowerCase(Locale.ROOT);
+        for (int i = 0;i < pername2.length();i++){
+            String letter = String.valueOf(pername2.charAt(i));
+            if (i == 0){
+                soundex.add(letter);
+                continue;
+            }
+            switch (letter){
+                case "b", "f", "p", "v" -> {
+                    if (!soundex.get(soundex.size() - 1).equals("1")) soundex.add("1");
+                }
+                case "l" -> {
+                    if (!soundex.get(soundex.size() - 1).equals("4")) soundex.add("4");
+                }
+                case "c", "g", "j", "k", "q", "s", "x", "z" -> {
+                    if (!soundex.get(soundex.size() - 1).equals("2")) soundex.add("2");
+                }
+                case "m" ,"n" -> {
+                    if (!soundex.get(soundex.size() - 1).equals("5")) soundex.add("5");
+                }
+                case "d" ,"t" -> {
+                    if (!soundex.get(soundex.size() - 1).equals("3")) soundex.add("3");
+                }
+                case "r" -> {
+                    if (!soundex.get(soundex.size() - 1).equals("6")) soundex.add("6");
+                }
+            }
+        }
+
+        while (soundex.size() < 4){
+            soundex.add("0");
+        }
+
+        return list2String(soundex.subList(0, 4));
+    }
+
+    private String list2String(List<String> soundex) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (String item : soundex){
+            stringBuilder.append(item);
+        }
+        return stringBuilder.toString();
     }
 
     public void encode(int bitVectorSize, List<List<List<String>>> datasets, int[][][] birVectors, int nGrams,
@@ -50,7 +154,7 @@ public class BloomFilter {
             int iDatasetSize = iDataset.size();
             int[][] iBitVectors = new int[datasets.get(i).size()][];
 
-            int threadNum = 8;//线程数量
+            int threadNum = 5;//线程数量
             int numPerThread = Math.floorDiv(iDatasetSize, threadNum) + 1;
             List<Thread> threads = new ArrayList<>();
             for (int j = 0; j < threadNum; j++) {
@@ -144,43 +248,56 @@ public class BloomFilter {
         return true;
     }
 
-    public void calSimilarities(List<List<String>> dataset1, List<List<String>> dataset2, int[][] bitVectors1,
-                                int[][] bitVectors2, List<Double[]> similarities, int numGrams) {
-        int threadNum = 9;//线程数量
-        int dataset1Size = dataset1.size();
-        int dataset2Size = dataset2.size();
-        int numPerThread = Math.floorDiv(dataset1Size, threadNum) + 1;
-        List<Thread> threads = new ArrayList<>();
-        for (int i = 0; i < threadNum; i++) {
-            int start = i * numPerThread;
-            int end = Math.min(start + numPerThread, dataset1Size);
-            Thread thread = new Thread(() -> {
-                double sim;
-                double esSim;
-                //只计算从该值往后的数之间的距离(不包括该数)
-                for (int j = start; j < end; j++) {
-                    for (int k = 0; k < dataset2Size; k++) {
-                        sim = calSimilarity(dataset1.get(j), dataset2.get(k), numGrams);
-                        esSim = esSimilarity(bitVectors1[j], bitVectors2[k]);
-                        Double[] simTuple = new Double[2];
-                        simTuple[0] = sim;
-                        simTuple[1] = esSim;
-                        synchronized (similarities) {
-                            similarities.add(simTuple);
+    public void calSimilarities(Map<String, List<List<String>>> dataset1, Map<String, List<List<String>>> dataset2,
+                                Map<String, List<List<Integer>>> bitVectors1, Map<String, List<List<Integer>>> bitVectors2,
+                                List<Double[]> similarities, int numGrams) {
+        for (String key : dataset1.keySet()){
+            System.out.printf("计算key:%s的相似度%n", key);
+            List<List<String>> keyDataset2;
+            List<List<Integer>> keyBitVector2;
+            if (dataset2.containsKey(key)) {
+                //第二个数据集有这个key才继续
+                keyDataset2 = dataset2.get(key);
+                keyBitVector2 = bitVectors2.get(key);
+            }
+            else continue;
+            List<List<String>> keyDataset1 = dataset1.get(key);
+            List<List<Integer>> keyBitVector1 = bitVectors1.get(key);
+
+            int threadNum = 5;//线程数量
+            int keyDataset1Size = keyDataset1.size();
+            int keyDataset2Size = keyDataset2.size();
+            int numPerThread = Math.floorDiv(keyDataset1Size, threadNum) + 1;
+            List<Thread> threads = new ArrayList<>();
+            for (int i = 0; i < threadNum; i++) {
+                int start = i * numPerThread;
+                int end = Math.min(start + numPerThread, keyDataset1Size);
+                Thread thread = new Thread(() -> {
+                    double sim;
+                    double esSim;
+                    for (int j = start; j < end; j++) {
+                        for (int k = 0; k < keyDataset2Size; k++) {
+                            sim = calSimilarity(keyDataset1.get(j), keyDataset2.get(k), numGrams);
+                            esSim = esSimilarity(keyBitVector1.get(j), keyBitVector2.get(k));
+                            Double[] simTuple = new Double[2];
+                            simTuple[0] = sim;
+                            simTuple[1] = esSim;
+                            synchronized (similarities) {
+                                similarities.add(simTuple);
+                            }
                         }
                     }
-                }
-                System.out.printf("%s完成 %n", Thread.currentThread().toString());
-            });
-            thread.start();
-            threads.add(thread);
-        }
+                });
+                thread.start();
+                threads.add(thread);
+            }
 
-        for (Thread thread : threads) {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            for (Thread thread : threads) {
+                try {
+                    thread.join();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -199,14 +316,14 @@ public class BloomFilter {
         return (double) 2 * identical / (ngrams1.size() + ngrams2.size());
     }
 
-    public double esSimilarity(int[] bitVector1, int[] bitVector2) {
+    public double esSimilarity(List<Integer> bitVector1, List<Integer> bitVector2) {
         int identical = 0;
         int count1 = 0;
         int count2 = 0;
-        for (int i = 0; i < Math.min(bitVector1.length, bitVector2.length); i++) {
-            if (bitVector1[i] == 1) count1++;
-            if (bitVector2[i] == 1) count2++;
-            if (bitVector1[i] == 1 && bitVector2[i] == 1) identical++;
+        for (int i = 0; i < Math.min(bitVector1.size(), bitVector2.size()); i++) {
+            if (bitVector1.get(i) == 1) count1++;
+            if (bitVector2.get(i) == 1) count2++;
+            if (bitVector1.get(i) == 1 && bitVector2.get(i) == 1) identical++;
         }
 
         if ((count1 + count2) == 0) {
@@ -220,11 +337,11 @@ public class BloomFilter {
                             List<Double[]> similarities) {
         String filepath = "StringResult/" + method + "/";
         for (String filename : filenames) {
-            filepath = filepath + filename.substring(0, filename.length() - 4);
+            filepath = filepath + filename.substring(0, filename.length() - 4) + "-";
         }
         filepath += "/";
         for (String attribute : attributes) {
-            filepath += attribute;
+            filepath += attribute + "-";
         }
         File fileDir = new File(filepath);
         if (!fileDir.exists()) {
@@ -278,17 +395,20 @@ public class BloomFilter {
         BloomFilter bloomFilter = new BloomFilter();
         String[] filenames = {"census.csv", "cis.csv"};
         String[][] attributes = {
-                {"PERNAME1", "PERNAME2"},
                 {"PERNAME1", "PERNAME2", "SEX"},
                 {"PERNAME1", "PERNAME2", "SEX", "DOB_YEAR"},
-                };
+                {"PERNAME1", "PERNAME2", "SEX", "DOB_YEAR" , "PERSON_ID"}};
         String key = "bloomfilter";
+        int dataSize = 20000;
+        int bitVectorSize = 1000;
+        int nGrams = 2;
+        int k = 30;
+        String blockingMethod = "Soundex";
         for (String[] tempAttributes : attributes) {
-            System.out.println("--------------------------" + Arrays.toString(tempAttributes) + "----------------------------");
-            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "Normal", key);
-            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "ULDP", key);
-            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "WXOR", key);
-            bloomFilter.experiment("Istat", filenames, 20000, 1000, 2, 30, tempAttributes, "RESAM", key);
+            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes, "Normal", key, blockingMethod);
+            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes, "ULDP", key, blockingMethod);
+            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes, "WXOR", key, blockingMethod);
+            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes, "RESAM", key, blockingMethod);
         }
     }
 }
