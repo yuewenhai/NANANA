@@ -10,6 +10,8 @@ public class BloomFilter {
     public final int wSize = 1;
     public final int randomSeed = 42;
     public final int blockIndex = 1;
+    public final int blockKeyLength = 16;
+    public final int blockKeyNum = 30;
 
     public void experiment(String datasetName, String[] filenames, int datasetSize, int bitVectorSize,
                            int nGrams, int k, String[] attributes, String method, String key, String blockingMethod) {
@@ -31,7 +33,7 @@ public class BloomFilter {
         startTime = System.currentTimeMillis();
         List<Map<String, List<List<String>>>> blockDatasets = new ArrayList<>();
         List<Map<String, List<List<Integer>>>> blockBitVectors = new ArrayList<>();
-        blocking(datasets, bitVectors, blockingMethod, blockDatasets, blockBitVectors);
+        blocking(datasets, bitVectors, blockingMethod, blockDatasets, blockBitVectors, bitVectorSize);
         endTime = System.currentTimeMillis();
         System.out.println("blocking 耗时:" + (double)(endTime - startTime) / 1000);
 
@@ -44,57 +46,107 @@ public class BloomFilter {
 
         System.out.println("store results");
         startTime = System.currentTimeMillis();
-        storeResult(datasetName, filenames, datasetSize, bitVectorSize, nGrams, k, attributes, method, similarities);
+        storeResult(datasetName, filenames, datasetSize, bitVectorSize, nGrams, k, attributes, method, similarities, blockingMethod);
         endTime = System.currentTimeMillis();
         System.out.println("store results 耗时:" + (double)(endTime - startTime) / 1000);
     }
 
     private void blocking(List<List<List<String>>> datasets, int[][][] bitVectors, String blockingMethod,
                           List<Map<String, List<List<String>>>> blockDatasets,
-                          List<Map<String, List<List<Integer>>>> blockBitVectors) {
-        Map<String, List<List<String>>> blockDataset = new HashMap<>();
-        Map<String, List<List<Integer>>> blockBitVector = new HashMap<>();
+                          List<Map<String, List<List<Integer>>>> blockBitVectors, int bitVectorSize) {
+        int[][] bigThetas = generateBlockBigThetas(bitVectorSize);
+
         for (int i = 0;i < datasets.size();i++){
-            List<List<String>> dataset = datasets.get(i);
+            List<List<String>> ithDataset = datasets.get(i);
+            int[][] ithBitVectors = bitVectors[i];
+
+            Map<String, List<List<String>>> ithBlockDataset = new HashMap<>();
+            Map<String, List<List<Integer>>> ithBlockBitVectors = new HashMap<>();
             List<List<String>> tempDataset;
             List<List<Integer>> tempBitVector;
-            int[][] bitVector = bitVectors[i];
+            List<Integer> tempList = new ArrayList<>();
             if (blockingMethod.equals("Soundex")) {
-                for (int j = 0; j < dataset.size(); j++) {
-                    List<String> record = dataset.get(j);
-                    int[] recordBitVector = bitVector[j];
+                for (int j = 0; j < ithDataset.size(); j++) {
+                    List<String> record = ithDataset.get(j);
+                    int[] recordBitVector = ithBitVectors[j];
                     String pername2 = record.get(blockIndex);
                     String soundex = generateSoundex(pername2);
-                    if (!blockDataset.containsKey(soundex)) {
+                    if (!ithBlockDataset.containsKey(soundex)) {
                         tempDataset = new ArrayList<>();
                         tempDataset.add(record);
-                        blockDataset.put(soundex, tempDataset);
+                        ithBlockDataset.put(soundex, tempDataset);
                     } else {
-                        tempDataset = blockDataset.get(soundex);
+                        tempDataset = ithBlockDataset.get(soundex);
                         tempDataset.add(record);
                     }
-                    if (!blockBitVector.containsKey(soundex)) {
+                    tempList.clear();
+                    if (!ithBlockBitVectors.containsKey(soundex)) {
                         tempBitVector = new ArrayList<>();
-                        tempBitVector.add(array2List(recordBitVector));
-                        blockBitVector.put(soundex, tempBitVector);
+                        array2List(recordBitVector, tempList);
+                        tempBitVector.add(tempList);
+                        ithBlockBitVectors.put(soundex, tempBitVector);
                     } else {
-                        tempBitVector = blockBitVector.get(soundex);
-                        tempBitVector.add(array2List(recordBitVector));
+                        array2List(recordBitVector, tempList);
+                        tempBitVector = ithBlockBitVectors.get(soundex);
+                        tempBitVector.add(tempList);
+                    }
+                }
+            }else if (blockingMethod.equals("HLSH")) {
+                for (int j = 0;j < ithBitVectors.length;j++){
+                    List<String> record = ithDataset.get(j);
+                    int[] recordBitVector = ithBitVectors[j];
+
+                    for (int[] theta : bigThetas) {
+                        StringBuilder keyBuilder = new StringBuilder();
+                        for (int f : theta) {
+                            keyBuilder.append(recordBitVector[f]);
+                        }
+                        String key = keyBuilder.toString();
+                        if (!ithBlockDataset.containsKey(key)) {
+                            tempDataset = new ArrayList<>();
+                            tempDataset.add(record);
+                            ithBlockDataset.put(key, tempDataset);
+                        } else {
+                            tempDataset = ithBlockDataset.get(key);
+                            tempDataset.add(record);
+                        }
+                        tempList.clear();
+                        if (!ithBlockBitVectors.containsKey(key)) {
+                            tempBitVector = new ArrayList<>();
+                            array2List(recordBitVector, tempList);
+                            tempBitVector.add(tempList);
+                            ithBlockBitVectors.put(key, tempBitVector);
+                        } else {
+                            array2List(recordBitVector, tempList);
+                            tempBitVector = ithBlockBitVectors.get(key);
+                            tempBitVector.add(tempList);
+                        }
                     }
                 }
             }
-            blockDatasets.add(blockDataset);
-            blockBitVectors.add(blockBitVector);
+
+            blockDatasets.add(ithBlockDataset);
+            blockBitVectors.add(ithBlockBitVectors);
         }
     }
 
-    private List<Integer> array2List(int[] recordBitVector) {
-        List<Integer> result = new ArrayList<>();
-        for (int value : recordBitVector){
-            result.add(value);
+    private int[][] generateBlockBigThetas(int length) {
+        Random random = new Random();
+        int[][] bigThetas = new int[blockKeyNum][blockKeyLength];
+        for (int i = 0;i < blockKeyNum;i++){
+            int[] theta = new int[blockKeyLength];
+            for (int j = 0;j < blockKeyLength;j++){
+                theta[j] = random.nextInt(length);
+            }
+            bigThetas[i] = theta;
         }
+        return bigThetas;
+    }
 
-        return result;
+    private void array2List(int[] recordBitVector, List<Integer> tempList) {
+        for (int value : recordBitVector){
+            tempList.add(value);
+        }
     }
 
     private String generateSoundex(String pername2) {
@@ -177,31 +229,33 @@ public class BloomFilter {
                                 }
                             }
                         }
-                        if (method.equals("ULDP")) {
-                            for (int q = 0; q < bitVectorSize; q++) {
-                                if (bitVector[q] == 0 && rr.uRandomResponse()) bitVector[q] = 1;
-                            }
-                        }
-                        if (method.equals("WXOR")) {
-                            for (int q = 0;q < bitVectorSize;q++){
-                                for (int count = 0;count < wSize;count++){
-                                    int position = (q + count) % bitVectorSize;
-                                    int next = (q + count + 1) % bitVectorSize;
-                                    if (bitVector[position] == bitVector[next]) bitVector[position] = 0;
-                                    else bitVector[position] = 1;
+                        switch (method) {
+                            case "ULDP" -> {
+                                for (int q = 0; q < bitVectorSize; q++) {
+                                    if (bitVector[q] == 0 && rr.uRandomResponse()) bitVector[q] = 1;
                                 }
                             }
-                        }
-                        if (method.equals("RESAM")) {
-                            Random random = new Random(randomSeed);
-                            int[] newBitVector = new int[bitVectorSize];
-                            for (int q = 0;q < bitVectorSize;q++){
-                                int random1 = random.nextInt(bitVectorSize);
-                                int random2 = random.nextInt(bitVectorSize);
-                                if (bitVector[random1] == bitVector[random2]) newBitVector[q] = 0;
-                                else newBitVector[q] = 1;
+                            case "WXOR" -> {
+                                for (int q = 0;q < bitVectorSize;q++){
+                                    for (int count = 0;count < wSize;count++){
+                                        int position = (q + count) % bitVectorSize;
+                                        int next = (q + count + 1) % bitVectorSize;
+                                        if (bitVector[position] == bitVector[next]) bitVector[position] = 0;
+                                        else bitVector[position] = 1;
+                                    }
+                                }
                             }
-                            bitVector = newBitVector;
+                            case "RESAM" -> {
+                                Random random = new Random(randomSeed);
+                                int[] newBitVector = new int[bitVectorSize];
+                                for (int q = 0;q < bitVectorSize;q++){
+                                    int random1 = random.nextInt(bitVectorSize);
+                                    int random2 = random.nextInt(bitVectorSize);
+                                    if (bitVector[random1] == bitVector[random2]) newBitVector[q] = 0;
+                                    else newBitVector[q] = 1;
+                                }
+                                bitVector = newBitVector;
+                            }
                         }
                         iBitVectors[k] = bitVector;
                     }
@@ -264,7 +318,10 @@ public class BloomFilter {
             List<List<String>> keyDataset1 = dataset1.get(key);
             List<List<Integer>> keyBitVector1 = bitVectors1.get(key);
 
-            int threadNum = 5;//线程数量
+            int threadNum = 1;//线程数量
+            if (keyDataset1.size() > 1000){
+                threadNum = 5;
+            }
             int keyDataset1Size = keyDataset1.size();
             int keyDataset2Size = keyDataset2.size();
             int numPerThread = Math.floorDiv(keyDataset1Size, threadNum) + 1;
@@ -334,12 +391,12 @@ public class BloomFilter {
 
     public void storeResult(String datasetName, String[] filenames, int datasetSize, int bitVectorSize,
                             int nGrams, int k, String[] attributes, String method,
-                            List<Double[]> similarities) {
-        String filepath = "StringResult/" + method + "/";
+                            List<Double[]> similarities, String blockingMethod) {
+        String filepath = "StringResult/";
         for (String filename : filenames) {
             filepath = filepath + filename.substring(0, filename.length() - 4) + "-";
         }
-        filepath += "/";
+        filepath  = filepath + "/" + method + "/" + blockingMethod + "/";
         for (String attribute : attributes) {
             filepath += attribute + "-";
         }
@@ -403,7 +460,7 @@ public class BloomFilter {
         int bitVectorSize = 1000;
         int nGrams = 2;
         int k = 30;
-        String blockingMethod = "Soundex";
+        String blockingMethod = "HLSH";
         for (String[] tempAttributes : attributes) {
             bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes, "Normal", key, blockingMethod);
             bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes, "ULDP", key, blockingMethod);
