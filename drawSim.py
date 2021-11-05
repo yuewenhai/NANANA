@@ -53,4 +53,5 @@ for method in methods:
         line.set_transform(transform)
         ax.add_line(line)
         plt.title(method + '-' + array2str(attribute) + '-' + str(epsilon))
+        plt.savefig(method + '-' + array2str(attribute) + '-' + str(epsilon) + '.png')
         plt.show()
