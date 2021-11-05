@@ -25,11 +25,13 @@ def array2str(array):
     return string
 
 
+x = y = [1, 2, 3]
+
 for method in methods:
     for attribute in attributes:
         sim = []
         es_sim = []
-        for i in range(8):
+        for i in range(1):
             file_path = top + '/' + datasets_name + '/' + method + '/' + block_method + '/' + array2str(attribute)
             file_name = dataset_name + '-' + str(data_size) + '-' + str(bit_vector_size) + '-' + str(
                 n_grams) + '-' + str(k) + '-' + str(epsilon) + '-' + str(i) + '.txt'
@@ -50,4 +52,5 @@ for method in methods:
         transform = ax.transAxes
         line.set_transform(transform)
         ax.add_line(line)
+        plt.title(method + '-' + array2str(attribute) + '-' + str(epsilon))
         plt.show()
