@@ -1,5 +1,6 @@
 import pandas as pd
 from matplotlib import pyplot as plt
+import matplotlib.lines as mlines
 
 top = 'StringResult'
 block_method = 'Soundex'
@@ -33,8 +34,20 @@ for method in methods:
             file_name = dataset_name + '-' + str(data_size) + '-' + str(bit_vector_size) + '-' + str(
                 n_grams) + '-' + str(k) + '-' + str(epsilon) + '-' + str(i) + '.txt'
             temp_result = pd.read_table(file_path + '/' + file_name, sep=' ')
-            sim.append(temp_result[:][0])
-            es_sim.append(temp_result[:][1])
+            for sims in temp_result.values:
+                sim.append(sims[0])
+                es_sim.append(sims[1])
 
-        plt.scatter(sim, es_sim)
+        # plt.scatter(sim, es_sim, s=1)
+        # plt.plot(x, y, 'k-', color='g')
+        # plt.ylim(0, 1)
+        # plt.xlim(0, 1)
+        # plt.show()
+
+        fig, ax = plt.subplots()
+        ax.scatter(sim, es_sim)
+        line = mlines.Line2D([0, 1], [0, 1], color='red')
+        transform = ax.transAxes
+        line.set_transform(transform)
+        ax.add_line(line)
         plt.show()
