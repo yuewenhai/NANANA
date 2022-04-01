@@ -6,6 +6,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
 
 public class EvalLinkage {
@@ -16,11 +21,14 @@ public class EvalLinkage {
     public Encoding encoding_method;
     public Hashing hashing_method;
     public Hardening hardening_method;
+    public ThreadPoolExecutor threadPool;
 
     public EvalLinkage(Encoding encoding, Hashing hashing, Hardening hardening) {
         this.encoding_method = encoding;
         this.hashing_method = hashing;
         this.hardening_method = hardening;
+        this.threadPool = new ThreadPoolExecutor(8, 10, 1, TimeUnit.DAYS,
+                new LinkedBlockingDeque<Runnable>());
     }
 
     public List<Map> load_dataset_salt(String dataset_file, int[] attr_index_list, int entity_id_col,
@@ -76,18 +84,17 @@ public class EvalLinkage {
                                                String hardening_type, int bf_len) {
         Map<String, BitSet> rec_clk_bf_dict = new HashMap<>(); // The dictionary of Bloom filters.
 
-
         //Multi-thread generate bloom filter
-        List<Thread> threadList = new ArrayList<>();
         int total_entity = rec_q_gram_dict.keySet().size();
         int threadNum = Runtime.getRuntime().availableProcessors() + 1;
         int num_entity_per_thread = total_entity / threadNum + 1;
+        CountDownLatch countDownLatch = new CountDownLatch(threadNum); // execute all the threads, then continue
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, total_entity);
-            Thread thread = new Thread(() -> {
+            List<String> rec_q_gram_dict_keyList = rec_q_gram_dict.keySet().stream().toList();
+            threadPool.execute(() -> {
                 List<String> use_rec_q_gran_list;
-                List<String> rec_q_gram_dict_keyList = rec_q_gram_dict.keySet().stream().toList();
                 for (int j = start; j < end; j++) {
                     String entity_id = rec_q_gram_dict_keyList.get(j);
                     use_rec_q_gran_list = rec_q_gram_dict.get(entity_id);
@@ -117,17 +124,13 @@ public class EvalLinkage {
                         rec_clk_bf_dict.put(entity_id, rec_bf);
                     }
                 }
+                countDownLatch.countDown();
             });
-            thread.start();
-            threadList.add(thread);
         }
-
-        for (Thread thread : threadList) {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
 
         String harden_method_str;
@@ -143,15 +146,15 @@ public class EvalLinkage {
         Map<String, BitSet> rec_rbf_bf_dict = new HashMap<>(); // The dictionary of Bloom filters.
 
         //Multi-thread generate bloom filter
-        List<Thread> threadList = new ArrayList<>();
         int total_entity = rec_attr_dict.keySet().size();
-        int threadNum = Runtime.getRuntime().availableProcessors() - 1;
+        int threadNum = Runtime.getRuntime().availableProcessors() + 1;
         int num_entity_per_thread = total_entity / threadNum + 1;
+        CountDownLatch countDownLatch = new CountDownLatch(threadNum); // execute all the threads, then continue
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, total_entity);
-            Thread thread = new Thread(() -> {
-                List<String> rec_attr_dict_keyList = rec_attr_dict.keySet().stream().toList();
+            List<String> rec_attr_dict_keyList = rec_attr_dict.keySet().stream().toList();
+            threadPool.execute(() -> {
                 List<String> use_rec_attr_val_list;
                 String entity_id;
                 for (int j = start; j < end; j++) {
@@ -183,17 +186,13 @@ public class EvalLinkage {
                         rec_rbf_bf_dict.put(entity_id, rec_bf);
                     }
                 }
+                countDownLatch.countDown();
             });
-            thread.start();
-            threadList.add(thread);
         }
-
-        for (Thread thread : threadList) {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
 
         String harden_method_str;
@@ -207,11 +206,33 @@ public class EvalLinkage {
     public Map<String, List<String>> gen_q_gram_dict(Map<String, List<String>> rec_attr_val_dict) {
         Map<String, List<String>> rec_q_gram_dict = new HashMap<>();  // The dictionary of q-gram lists.
 
-        for (String entity_id : rec_attr_val_dict.keySet()) {
-            List<String> rec_val_list = rec_attr_val_dict.get(entity_id);
-            List<String> rec_q_gram_list = this.encoding_method.qGramListForRec(rec_val_list);
-            rec_q_gram_dict.put(entity_id, rec_q_gram_list);
+        //Multi-thread generate bloom filter
+        int total_entity = rec_attr_val_dict.keySet().size();
+        int threadNum = Runtime.getRuntime().availableProcessors() + 1;
+        int num_entity_per_thread = total_entity / threadNum + 1;
+        CountDownLatch countDownLatch = new CountDownLatch(threadNum); // execute all the threads, then continue
+        for (int i = 0; i < threadNum; i++) {
+            int start = i * num_entity_per_thread;
+            int end = Math.min(start + num_entity_per_thread, total_entity);
+            List<String> rec_attr_val_dict_keyList = rec_attr_val_dict.keySet().stream().toList();
+            threadPool.execute(() -> {
+                for (int j = start;j < end;j++) {
+                    String entity_id = rec_attr_val_dict_keyList.get(j);
+                    List<String> rec_val_list = rec_attr_val_dict.get(entity_id);
+                    List<String> rec_q_gram_list = this.encoding_method.qGramListForRec(rec_val_list);
+                    synchronized (rec_q_gram_dict) {
+                        rec_q_gram_dict.put(entity_id, rec_q_gram_list);
+                    }
+                }
+                countDownLatch.countDown();
+            });
         }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
 
         System.out.printf("Generated %d q-gram lists%n", rec_q_gram_dict.size());
 
@@ -544,39 +565,61 @@ public class EvalLinkage {
 
         // Iterate over all block values that occur in both data sets
         //
-        for (String block_val1 : block_dict1.keySet()) {
-            if (!block_dict2.containsKey(block_val1))
-                continue; // Block value not in common, go to next one
+        int total_block = block_dict1.keySet().size();
+        int threadNum = Runtime.getRuntime().availableProcessors() + 1;
+        int num_entity_per_thread = total_block / threadNum + 1;
+        CountDownLatch countDownLatch = new CountDownLatch(threadNum); // execute all the threads, then continue
+        ReentrantLock lock = new ReentrantLock();
+        for (int i = 0; i < threadNum; i++) {
+            int start = i * num_entity_per_thread;
+            int end = Math.min(start + num_entity_per_thread, total_block);
+            List<String>  block_dict_keyList = block_dict1.keySet().stream().toList();
+            threadPool.execute(() -> {
+                for (int j = start;j < end;j++) {
+                    String block_val1 = block_dict_keyList.get(j);
+                    if (!block_dict2.containsKey(block_val1))
+                        continue; // Block value not in common, go to next one
 
-            Set<String> entity_id_set1 = block_dict1.get(block_val1);
-            Set<String> entity_id_set2 = block_dict2.get(block_val1);
+                    Set<String> entity_id_set1 = block_dict1.get(block_val1);
+                    Set<String> entity_id_set2 = block_dict2.get(block_val1);
 
-            // Iterate over all value pairs
-            //
-            for (String entity_id1 : entity_id_set1) {
-                List<String> val1 = val_dict1.get(entity_id1);
+                    // Iterate over all value pairs
+                    //
+                    for (String entity_id1 : entity_id_set1) {
+                        List<String> val1 = val_dict1.get(entity_id1);
 
-                for (String entity_id2 : entity_id_set2) {
-                    String[] entity_id_pair = new String[2];
-                    if (entity_id1.compareTo(entity_id2) >= 0) {
-                        entity_id_pair[0] = entity_id1;
-                        entity_id_pair[1] = entity_id2;
-                    } else {
-                        entity_id_pair[0] = entity_id2;
-                        entity_id_pair[1] = entity_id1;
-                    }
+                        for (String entity_id2 : entity_id_set2) {
+                            String[] entity_id_pair = new String[2];
+                            if (entity_id1.compareTo(entity_id2) >= 0) {
+                                entity_id_pair[0] = entity_id1;
+                                entity_id_pair[1] = entity_id2;
+                            } else {
+                                entity_id_pair[0] = entity_id2;
+                                entity_id_pair[1] = entity_id1;
+                            }
 
-                    if (!pairs_compared_set.contains(entity_id_pair)) {
-                        List<String> val2 = val_dict2.get(entity_id2);
-                        pairs_compared_set.add(entity_id_pair);
+                            if (!pairs_compared_set.contains(entity_id_pair)) {
+                                lock.lock();
+                                List<String> val2 = val_dict2.get(entity_id2);
+                                pairs_compared_set.add(entity_id_pair);
 
-                        double sim = hashing_method.cal_q_gram_sim(val1, val2); // Calculate the similarity
+                                double sim = hashing_method.cal_q_gram_sim(val1, val2); // Calculate the similarity
 
-                        if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
+                                if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
+                                lock.unlock();
+                            }
+                        }
                     }
                 }
-            }
+                countDownLatch.countDown();
+            });
         }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         int num_all_comparisons = val_dict1.size() * val_dict2.size();
         int num_pairs_compared = pairs_compared_set.size();
 
@@ -608,39 +651,59 @@ public class EvalLinkage {
 
         // Iterate over all block values that occur in both data sets
         //
-        for (String block_val1 : block_dict1.keySet()) {
-            if (!block_dict2.containsKey(block_val1))
-                continue; // Block value not in common, go to next one
+        int total_blocks = block_dict1.keySet().size();
+        int threadNum = Runtime.getRuntime().availableProcessors() + 1;
+        int num_entity_per_thread = total_blocks / threadNum + 1;
+        CountDownLatch countDownLatch = new CountDownLatch(threadNum); // execute all the threads, then continue
+        ReentrantLock lock = new ReentrantLock();
+        for (int i = 0; i < threadNum; i++) {
+            int start = i * num_entity_per_thread;
+            int end = Math.min(start + num_entity_per_thread, total_blocks);
+            List<String>  block_dict_keyList = block_dict1.keySet().stream().toList();
+            threadPool.execute(() -> {
+                for (int j = start;j < end;j++) {
+                    String block_val1 = block_dict_keyList.get(j);
+                    if (!block_dict2.containsKey(block_val1))
+                        continue; // Block value not in common, go to next one
 
-            Set<String> entity_id_set1 = block_dict1.get(block_val1);
-            Set<String> entity_id_set2 = block_dict2.get(block_val1);
+                    Set<String> entity_id_set1 = block_dict1.get(block_val1);
+                    Set<String> entity_id_set2 = block_dict2.get(block_val1);
 
-            // Iterate over all value pairs
-            //
-            for (String entity_id1 : entity_id_set1) {
-                BitSet val1 = val_dict1.get(entity_id1);
+                    // Iterate over all value pairs
+                    //
+                    for (String entity_id1 : entity_id_set1) {
+                        BitSet val1 = val_dict1.get(entity_id1);
 
-                for (String entity_id2 : entity_id_set2) {
-                    String[] entity_id_pair = new String[2];
-                    if (entity_id1.compareTo(entity_id2) >= 0) {
-                        entity_id_pair[0] = entity_id1;
-                        entity_id_pair[1] = entity_id2;
-                    } else {
-                        entity_id_pair[0] = entity_id2;
-                        entity_id_pair[1] = entity_id1;
-                    }
+                        for (String entity_id2 : entity_id_set2) {
+                            String[] entity_id_pair = new String[2];
+                            if (entity_id1.compareTo(entity_id2) >= 0) {
+                                entity_id_pair[0] = entity_id1;
+                                entity_id_pair[1] = entity_id2;
+                            } else {
+                                entity_id_pair[0] = entity_id2;
+                                entity_id_pair[1] = entity_id1;
+                            }
 
-                    if (!pairs_compared_set.contains(entity_id_pair)) {
-                        BitSet val2 = val_dict2.get(entity_id2);
-                        pairs_compared_set.add(entity_id_pair);
+                            if (!pairs_compared_set.contains(entity_id_pair)) {
+                                lock.lock();
+                                BitSet val2 = val_dict2.get(entity_id2);
+                                pairs_compared_set.add(entity_id_pair);
 
-                        double sim = cal_bf_sim(val1, val2); // Calculate the similarity
+                                double sim = cal_bf_sim(val1, val2); // Calculate the similarity
 
-                        if (sim >= min_sim)
-                            rec_pair_dict.put(entity_id_pair, sim);
+                                if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
+                                lock.unlock();
+                            }
+                        }
                     }
                 }
-            }
+                countDownLatch.countDown();
+            });
+        }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
         int num_all_comparisons = val_dict1.size() * val_dict2.size();
         int num_pairs_compared = pairs_compared_set.size();
