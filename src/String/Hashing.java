@@ -82,7 +82,7 @@ class DoubleHashing extends Hashing {
             int index;
             for (int i = 1; i <= k; i++) {
                 sum = sum.add(hash_value2);
-                index = Integer.parseInt(sum.toString(10)) % this.bf_len;
+                index = (sum.intValue() & 0x7FFFFFFF) % this.bf_len;
                 bf.set(index);
             }
         }
@@ -108,11 +108,12 @@ class EnhancedDoubleHashing extends DoubleHashing {
             BigInteger hash_value1 = hashFunction(this.hash_function1, q_gram);
             BigInteger hash_value2 = hashFunction(this.hash_function2, q_gram);
 
-            BigInteger sum = hash_value1;
+            BigInteger sum = hash_value1.add(hash_value2);
+            int sumInt = sum.intValue() & 0x7FFFFFFF;
             int index;
             for (int i = 1; i <= k; i++) {
-                sum = sum.add(hash_value2).add(new BigInteger(String.valueOf((Math.pow(i, 3) - i) / 6)));
-                index = Integer.parseInt(sum.toString(10)) % this.bf_len;
+                sumInt += (Math.pow(i, 3) - i) / 6;
+                index = sumInt % this.bf_len;
                 bf.set(index);
             }
         }
@@ -138,10 +139,10 @@ class RandomHashing extends Hashing {
         for (String q_gram : q_gram_set) {
             BigInteger hash_value = hashFunction(this.hash_function, q_gram);
 
-            Random random = new Random(Long.parseLong(String.valueOf(hash_value)));
-
+            Random random = new Random(hash_value.intValue() & 0x7FFFFFFF);
+            int index_i;
             for (int i = 1; i <= k; i++) {
-                int index_i = random.nextInt(this.bf_len);
+                index_i = random.nextInt(this.bf_len);
                 bf.set(index_i);
             }
         }

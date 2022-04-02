@@ -31,7 +31,7 @@ public class Encoding {
 
         List<String> qGramList = new ArrayList<>();
         for (String attr_val : attr_val_list) {
-            qGramList = qGramListForAttr(attr_val, q, padded);
+            qGramList.addAll(qGramListForAttr(attr_val, q, padded));
         }
 
         return qGramList;

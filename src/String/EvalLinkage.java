@@ -108,7 +108,7 @@ public class EvalLinkage {
 //            }
                     if (hardening_method != null) {
                         rec_bf = encoding_method.clk_encode(use_rec_q_gran_list);
-                        rec_bf = hardening_method.harden_bf(rec_bf, bf_len);
+                        rec_bf = hardening_method.harden_bf(rec_bf);
                     } else if (hardening_type.equals("salt")) {
                         rec_bf = encoding_method.clk_encode(use_rec_q_gran_list, salt_dict.get(entity_id));
                     } else {
@@ -170,7 +170,7 @@ public class EvalLinkage {
 //            }
                     if (hardening_method != null) {
                         rec_bf = encoding_method.rbf_encode(use_rec_attr_val_list, bf_len);
-                        rec_bf = hardening_method.harden_bf(rec_bf, bf_len);
+                        rec_bf = hardening_method.harden_bf(rec_bf);
                     } else if (hardening_type.equals("salt")) {
                         rec_bf = encoding_method.rbf_encode(use_rec_attr_val_list, salt_dict.get(entity_id), bf_len);
                     } else {
@@ -216,7 +216,7 @@ public class EvalLinkage {
             int end = Math.min(start + num_entity_per_thread, total_entity);
             List<String> rec_attr_val_dict_keyList = rec_attr_val_dict.keySet().stream().toList();
             threadPool.execute(() -> {
-                for (int j = start;j < end;j++) {
+                for (int j = start; j < end; j++) {
                     String entity_id = rec_attr_val_dict_keyList.get(j);
                     List<String> rec_val_list = rec_attr_val_dict.get(entity_id);
                     List<String> rec_q_gram_list = this.encoding_method.qGramListForRec(rec_val_list);
@@ -240,6 +240,7 @@ public class EvalLinkage {
     }
 
     public double cal_bf_sim(BitSet bf1, BitSet bf2) {
+        if (bf1 == null || bf2 == null) return 0.0;
         assert bf1.size() == bf2.size();
 
         int num_ones_bf1 = bf1.cardinality();
@@ -533,16 +534,17 @@ public class EvalLinkage {
             if (min_all_block_size >= num_rec_in_block) min_all_block_size = num_rec_in_block;
         }
 
-
-        for (String block_key : block_delete_list) {
-            block_dict.remove(block_key);
-        }
+        // delete the block whose size is bigger than 100
+//        for (String block_key : block_delete_list) {
+//            block_dict.remove(block_key);
+//        }
 
         System.out.printf("  Minimum, average and maximum block sizes (all blocks): %d / %.2f / %d%n", min_all_block_size,
                 (double) sum_all_block_size / all_block_size_list.size(), max_all_block_size);
         System.out.printf("    %d block only contain 1 entity%n", num_block_size1);
-        System.out.printf("    Removed %d blocks larger than %d records, %d blocks left%n", num_large_block_del,
-                MAX_BLOCK_SIZE, block_size_list.size());
+//        System.out.printf("    Removed %d blocks larger than %d records, %d blocks left%n", num_large_block_del,
+//                MAX_BLOCK_SIZE, block_size_list.size());
+        System.out.printf("    %d blocks larger than %d records%n", num_large_block_del, MAX_BLOCK_SIZE);
         if (block_size_list.size() == 0) {
             System.out.println("    Warning: No blocks left");
         }
@@ -564,7 +566,8 @@ public class EvalLinkage {
         // print("  Minimum similarity of record pairs to be stored: %.2f" % (min_sim))
 
         // Iterate over all block values that occur in both data sets
-        //
+        // multiThread
+
         int total_block = block_dict1.keySet().size();
         int threadNum = Runtime.getRuntime().availableProcessors() + 1;
         int num_entity_per_thread = total_block / threadNum + 1;
@@ -573,9 +576,9 @@ public class EvalLinkage {
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, total_block);
-            List<String>  block_dict_keyList = block_dict1.keySet().stream().toList();
+            List<String> block_dict_keyList = block_dict1.keySet().stream().toList();
             threadPool.execute(() -> {
-                for (int j = start;j < end;j++) {
+                for (int j = start; j < end; j++) {
                     String block_val1 = block_dict_keyList.get(j);
                     if (!block_dict2.containsKey(block_val1))
                         continue; // Block value not in common, go to next one
@@ -659,9 +662,9 @@ public class EvalLinkage {
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, total_blocks);
-            List<String>  block_dict_keyList = block_dict1.keySet().stream().toList();
+            List<String> block_dict_keyList = block_dict1.keySet().stream().toList();
             threadPool.execute(() -> {
-                for (int j = start;j < end;j++) {
+                for (int j = start; j < end; j++) {
                     String block_val1 = block_dict_keyList.get(j);
                     if (!block_dict2.containsKey(block_val1))
                         continue; // Block value not in common, go to next one
@@ -754,7 +757,7 @@ public class EvalLinkage {
         return class_res_dict;
     }
 
-    public double calc_precision(int num_tp, int num_fp) {
+    public static double calc_precision(int num_tp, int num_fp) {
         double precision;
         if ((num_tp + num_fp) > 0)
             precision = (double) num_tp / (num_tp + num_fp);
@@ -763,7 +766,7 @@ public class EvalLinkage {
         return Double.parseDouble(String.format("%.4f", precision));
     }
 
-    public double calc_recall(int num_tp, int num_fn) {
+    public static double calc_recall(int num_tp, int num_fn) {
         double recall;
         if ((num_tp + num_fn) > 0)
             recall = (double) num_tp / (num_tp + num_fn);
@@ -772,6 +775,25 @@ public class EvalLinkage {
         return Double.parseDouble(String.format("%.4f", recall));
     }
 
+
+    private static void calc_precisions_recalls(double[] sim_threshold_list, Map<Double, int[]> class_res_dict, List<Double> precisions, List<Double> recalls) {
+        int[] tp_fp_tn_fn;
+        int tp;
+        int fp;
+        int fn;
+        double precision;
+        double recall;
+        for (double sim_threshold : sim_threshold_list) {
+            tp_fp_tn_fn = class_res_dict.get(sim_threshold);
+            tp = tp_fp_tn_fn[0];
+            fp = tp_fp_tn_fn[1];
+            fn = tp_fp_tn_fn[3];
+            precision = calc_precision(tp, fp);
+            precisions.add(precision);
+            recall = calc_recall(tp, fn);
+            recalls.add(recall);
+        }
+    }
 
     public int cal_opt_k(Map<String, List<String>> rec_q_gram_dict1, Map<String, List<String>> rec_q_gram_dict2,
                          int bf_len) {
@@ -818,7 +840,7 @@ public class EvalLinkage {
         return stringBuilder.toString();
     }
 
-    public void storeResult(String filename, List<Double> bfPrecisions, List<Double> bfRecalls) {
+    public void storeResult(String filename, List<Double> precisions, List<Double> recalls) {
         File file = new File(filename);
         File filePath = new File(file.getParent());
         if (!filePath.exists()) {
@@ -828,19 +850,19 @@ public class EvalLinkage {
             }
         }
 
-        try {
+        try (FileWriter fw = new FileWriter(file, false);
+             BufferedWriter bw = new BufferedWriter(fw)) {
             if (!file.exists()) {
                 if (!file.createNewFile()) {
                     System.out.printf("创建文件%s失败\n", filename);
                     return;
                 }
             }
-            FileWriter fw = new FileWriter(file, false);
-            BufferedWriter bw = new BufferedWriter(fw);
+
             String line = "precision,recall";
             bw.write(line + "\n");
-            for (int i = 0;i < bfPrecisions.size();i++){
-                line = bfPrecisions.get(i) + "," + bfRecalls.get(i);
+            for (int i = 0; i < precisions.size(); i++) {
+                line = precisions.get(i) + "," + recalls.get(i);
                 bw.write(line + "\n");
             }
         } catch (IOException e) {
@@ -851,8 +873,8 @@ public class EvalLinkage {
 
     public static void main(String[] args) {
         String res_plot_file_name = "/Users/takafumikai/PycharmProjects/LDP-BV/result/result-auc.png";
-        String data_set_file_name1 = "/Users/takafumikai/PycharmProjects/LDP-BV/dataset/ncvoter/ncvoter-50000-1.csv";
-        String data_set_file_name2 = "/Users/takafumikai/PycharmProjects/LDP-BV/dataset/ncvoter/ncvoter-50000-2.csv";
+        String data_set_file_name1 = "D:/dataset/ncvoter/ncvoter-s-50000-1.csv";
+        String data_set_file_name2 = "D:/dataset/ncvoter/ncvoter-s-50000-2.csv";
         int[] attr_index_list = {1, 2, 4, 5};  // attr's columns used
         int entity_id_col = 0;
         double[] sim_threshold_list = {0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0};
@@ -860,10 +882,10 @@ public class EvalLinkage {
         int q = 2;
         boolean padded = false;
         int bf_len = 1000;
-        String hash_type = "dh-True";
+        String hash_type = "rh-False";
         String num_hash_functions = "10";
         String[] encode_type_list = {"clk"};
-        String[] bf_harden_types = new String[]{"rexor"};
+        String[] bf_harden_types = new String[]{"urap-0.9-2", "urap-0.9-1", "urap-0.8-2", "urap-0.8-1","urap-0.9-5", "urap-0.9-6", "urap-0.8-5", "urap-0.8-6"};
 
         for (double sim_threshold : sim_threshold_list) {
             assert 0.0 <= sim_threshold;
@@ -887,7 +909,7 @@ public class EvalLinkage {
 
 //        int mc_chain_len = 0;
 //        String mc_sel_method = null;
-        int salt_attr_index = -1; // for salt
+        int salt_attr_index = 6; // for salt
         int w_size = 0; // for wxor
         double flip_prob = 0; // for blip
         double epsilon = 0; // for urap
@@ -952,6 +974,8 @@ public class EvalLinkage {
         for (String encode_type : encode_type_list) {
             // TODO 添加MC
             for (String bf_harden_type : bf_harden_types) {
+                bf_len = 1000;
+                System.out.printf("\nEncoding Type: %s, Hardening Type: %s\n", encode_type, bf_harden_type);
                 if (bf_harden_type.equals("salt")) {
 //            salt_attr_index = Integer.parseInt(sys.argv[15]);
                     salt_attr_index = 6;
@@ -965,7 +989,7 @@ public class EvalLinkage {
                     ratio = Double.parseDouble(bf_harden_type.split("-")[1]);
                 } else if (bf_harden_type.startsWith("indexd")) {
                     // epsilon will be turned to ln(epsilon) in harden method
-                    epsilons = new ArrayList<>(Arrays.asList(bf_harden_type.split("-")[1]));
+                    epsilons = new ArrayList<>(Arrays.asList(bf_harden_type.split("-")[1].split(",")));
                 }
 
                 Encoding encode_method = null;
@@ -1002,45 +1026,44 @@ public class EvalLinkage {
                     } else {
                         evalLinkage.hashing_method.num_hash_function = Integer.parseInt(num_hash_functions);
                     }
-
-                    // Initalise the hardening method if needed
-                    //
-                    if (bf_harden_type.equals("none"))
-                        harden_method = null;
-                    else if (bf_harden_type.equals("bal")) {
-                        harden_method = new Balancing("Balancing", bf_len);
-                        bf_len *= 2;
-                    } else if (bf_harden_type.equals("xor")) {
-                        harden_method = new XorFolding("Xor-fold");
-                        bf_len /= 2;
-                    } else if (bf_harden_type.equals("r90")) {
-                        harden_method = new Rule90("Rule 90");
-                    } else if (bf_harden_type.startsWith("blip")) {
-                        harden_method = new Blip(String.format("Blip %.2f", flip_prob), flip_prob);
-                    } else if (bf_harden_type.equals("salt")) {
-                        harden_method = null;  // To indicate salting is to be applied
-                    }
-                    //TODO MarkovChain Harden
-                    else if (bf_harden_type.startsWith("wxor")) {
-                        harden_method = new Wxor(String.format("WXOR %d", w_size), w_size);
-                    } else if (bf_harden_type.equals("rexor")) {
-                        harden_method = new ResamXor("REXOR", bf_len);
-                    } else if (bf_harden_type.startsWith("urap")) {
-                        harden_method = new Urap(String.format("Urap %.2f %.2f", ratio, epsilon), ratio, epsilon,
-                                data_set_file_name1, encode_method.type, hash_type, q, padded,
-                                num_hash_functions, bf_len);
-                    } else if (bf_harden_type.startsWith("indexD")) {
-                        harden_method = new IndexD(bf_harden_type, epsilons,
-                                data_set_file_name1, encode_method.type, hash_type, q, padded,
-                                num_hash_functions, bf_len);
-                    }
-                    evalLinkage.hardening_method = harden_method; // 赋值给EvalLinkage
                 }
+
+                // Initalise the hardening method if needed
+                //
+                if (bf_harden_type.equals("none") || bf_harden_type.equals("salt"))
+                    harden_method = null;
+                else if (bf_harden_type.equals("bal")) {
+                    harden_method = new Balancing("Balancing", bf_len);
+                    bf_len *= 2;
+                } else if (bf_harden_type.equals("xor")) {
+                    harden_method = new XorFolding("Xor-fold", bf_len);
+                    bf_len /= 2;
+                } else if (bf_harden_type.equals("r90")) {
+                    harden_method = new Rule90("Rule 90", bf_len);
+                } else if (bf_harden_type.startsWith("blip")) {
+                    harden_method = new Blip(String.format("Blip %.2f", flip_prob), flip_prob, bf_len);
+                }
+                //TODO MarkovChain Harden
+                else if (bf_harden_type.startsWith("wxor")) {
+                    harden_method = new Wxor(String.format("WXOR %d", w_size), w_size, bf_len);
+                } else if (bf_harden_type.equals("rexor")) {
+                    harden_method = new ResamXor("REXOR", bf_len);
+                } else if (bf_harden_type.startsWith("urap")) {
+                    harden_method = new Urap(String.format("Urap %.2f %.2f", ratio, epsilon), ratio, epsilon,
+                            data_set_file_name1, encode_method.type, hash_type, q, padded,
+                            num_hash_functions, bf_len);
+                    harden_method.set_non_secret_index_list();
+                } else if (bf_harden_type.startsWith("indexd")) {
+                    harden_method = new IndexD(bf_harden_type, epsilons,
+                            data_set_file_name1, encode_method.type, hash_type, q, padded,
+                            num_hash_functions, bf_len);
+                    harden_method.set_indexGroup_list();
+                }
+                evalLinkage.hardening_method = harden_method; // 赋值给EvalLinkage
 
                 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                 // Encode data sets into Bloom filters
                 //
-
                 long start_time = new Date().getTime();
                 Map<String, BitSet> rec_bf_dict1;
                 Map<String, BitSet> rec_bf_dict2;
@@ -1131,26 +1154,10 @@ public class EvalLinkage {
 
                 System.out.printf("Time used for Bloom filter linkage: %d msec%n", bf_linkage_time);
 
-                // Calulate precision and recall values for the different thresholds
+                // Calculate precision and recall values for the different thresholds
                 //
-                int[] tp_fp_tn_fn;
-                int tp;
-                int fp;
-                int tn;
-                int fn;
-                double precision;
-                double recall;
                 if (times == 0) {
-                    for (double sim_threshold : sim_threshold_list) {
-                        tp_fp_tn_fn = q_gram_class_res_dict.get(sim_threshold);
-                        tp = tp_fp_tn_fn[0];
-                        fp = tp_fp_tn_fn[1];
-                        fn = tp_fp_tn_fn[3];
-                        precision = evalLinkage.calc_precision(tp, fp);
-                        qgramPrecisions.add(precision);
-                        recall = evalLinkage.calc_recall(tp, fn);
-                        qgramRecalls.add(recall);
-                    }
+                    calc_precisions_recalls(sim_threshold_list, q_gram_class_res_dict, qgramPrecisions, qgramRecalls);
 
                     String qgramResultFilePath = new File(data_set_file_name1).getParent();
                     String qgramResultFilename = String.format("q%d-padded%s-appendCntFlag%s.csv", q, padded, appendCntFlag);
@@ -1160,31 +1167,17 @@ public class EvalLinkage {
                 List<Double> bfPrecisions = new ArrayList<>();
                 List<Double> bfRecalls = new ArrayList<>();
 
-                for (double sim_threshold : sim_threshold_list) {
-                    tp_fp_tn_fn = bf_class_res_dict.get(sim_threshold);
-                    tp = tp_fp_tn_fn[0];
-                    fp = tp_fp_tn_fn[1];
-                    fn = tp_fp_tn_fn[3];
-                    precision = evalLinkage.calc_precision(tp, fp);
-                    bfPrecisions.add(precision);
-                    recall = evalLinkage.calc_recall(tp, fn);
-                    bfRecalls.add(recall);
-                }
+                calc_precisions_recalls(sim_threshold_list, bf_class_res_dict, bfPrecisions, bfRecalls);
                 System.out.printf("similarity threshold: %s%n", Arrays.toString(sim_threshold_list));
                 System.out.printf("q prec: %s%n", qgramPrecisions);
                 System.out.printf("q reca: %s%n", qgramRecalls);
                 System.out.printf("bf prec:%s%n", bfPrecisions);
-                System.out.printf("bf reca: %s%n\n", bfRecalls);
+                System.out.printf("bf reca: %s%n", bfRecalls);
 
                 enc_prec_list.add(bfPrecisions);
                 enc_reca_list.add(bfRecalls);
 
                 times += 1;
-
-                // Print a line with summary memory and timing results
-//
-                System.out.printf("Result saved in %s, block time: %d, q-gram link time: %d, bf link time: %d %n",
-                        res_plot_file_name, blocking_time, q_gram_linkage_time, bf_linkage_time);
 
                 if (bf_harden_type.equals("bal")) bf_len = bf_len / 2;
                 if (bf_harden_type.equals("xor")) bf_len = bf_len * 2;
@@ -1196,6 +1189,10 @@ public class EvalLinkage {
                 String resultFile = resultFilePath + String.format("/result/%s/%s/",
                         encode_type.toUpperCase(Locale.ROOT), hash_type.toUpperCase(Locale.ROOT)) + resultFilename;
                 evalLinkage.storeResult(resultFile, bfPrecisions, bfRecalls);
+                // Print a line with summary memory and timing results
+                System.out.printf("Result saved in %s, block time: %d, q-gram link time: %d, bf link time: %d %n",
+                        resultFile, blocking_time, q_gram_linkage_time, bf_linkage_time);
+
             }
             //TODO 画图
 //            draw_plot_auc(qgramPrecisions, qgramRecalls, enc_prec_list, enc_reca_list,
@@ -1207,5 +1204,6 @@ public class EvalLinkage {
 //                    legend_str_list, param_plot_title_str,
 //                    save_fig_name=res_plot_file_name.replace("auc", "split"),aspect_ratio=PLOT_RATIO)
         }
+        return;
     }
 }

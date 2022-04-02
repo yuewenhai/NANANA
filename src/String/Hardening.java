@@ -8,36 +8,40 @@ import java.util.*;
 
 public class Hardening {
     public String type;
+    public int bfLen;
 
-    Hardening(String type) {
+    Hardening(String type, int bfLen_) {
         this.type = type;
+        this.bfLen = bfLen_;
     }
 
-    public BitSet harden_bf(BitSet bf, int bf_len) {
+    public BitSet harden_bf(BitSet bf) {
         return null;
     }
+    public void set_non_secret_index_list() {}
+    public void set_indexGroup_list(){}
 }
 
 class Balancing extends Hardening {
     public int random_seed = 42;
     public List<Integer> shuffle_indexes = null;
 
-    Balancing(String type, int bf_len) {
-        super(type);
-        init_shuffle_index_list(bf_len);
+    Balancing(String type, int bf_len_) {
+        super(type, bf_len_);
+        init_shuffle_index_list(this.bfLen);
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-        BitSet balanced_bf = new BitSet(bf_len);
-        for (int i = 0; i < bf_len; i++) {
+    public BitSet harden_bf(BitSet bf) {
+        BitSet balanced_bf = new BitSet(this.bfLen * 2);
+        for (int i = 0; i < this.bfLen; i++) {
             if (bf.get(i)) balanced_bf.set(i);
-            else balanced_bf.set(i + bf_len);
+            else balanced_bf.set(i + this.bfLen);
         }
 
-        BitSet shuffle_balanced_bf = new BitSet(bf_len);
+        BitSet shuffle_balanced_bf = new BitSet(this.bfLen * 2);
 
-        for (int i = 0; i < bf_len; i++) {
+        for (int i = 0; i < this.bfLen * 2; i++) {
             int index = this.shuffle_indexes.get(i);
             if (balanced_bf.get(index)) shuffle_balanced_bf.set(i);
         }
@@ -62,19 +66,15 @@ class Balancing extends Hardening {
 }
 
 class XorFolding extends Hardening {
-
-    XorFolding(String type) {
-        super(type);
+    XorFolding(String type, int bf_len_) {
+        super(type, bf_len_);
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-        BitSet pre_half_bf = new BitSet(bf_len);
-        BitSet suf_half_bf = new BitSet(bf_len);
-        for (int i = 0; i < bf_len; i++) {
-            if (bf.get(i)) pre_half_bf.set(i);
-            if (bf.get(i + bf_len)) suf_half_bf.set(i);
-        }
+    public BitSet harden_bf(BitSet bf) {
+        int bf_len = this.bfLen / 2;
+        BitSet pre_half_bf = bf.get(0, bf_len - 1);
+        BitSet suf_half_bf = bf.get(bf_len, this.bfLen - 1);
 
         pre_half_bf.xor(suf_half_bf);
         return pre_half_bf;
@@ -84,17 +84,17 @@ class XorFolding extends Hardening {
 
 class Rule90 extends Hardening {
 
-    Rule90(String type) {
-        super(type);
+    Rule90(String type, int bfLen_) {
+        super(type, bfLen_);
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-        BitSet rule90_bf = new BitSet(bf_len);
-        for (int i = 0; i < bf_len; i++) {
+    public BitSet harden_bf(BitSet bf) {
+        BitSet rule90_bf = new BitSet(this.bfLen);
+        for (int i = 0; i < this.bfLen; i++) {
             if (i == 0) {
-                if (bf.get(bf_len - 1) != bf.get(i + 1)) rule90_bf.set(i);
-            } else if (i == bf_len - 1) {
+                if (bf.get(this.bfLen - 1) != bf.get(i + 1)) rule90_bf.set(i);
+            } else if (i == this.bfLen - 1) {
                 if (bf.get(i - 1) != bf.get(0)) rule90_bf.set(i);
             } else {
                 if (bf.get(i - 1) != bf.get(i + 1)) rule90_bf.set(i);
@@ -108,16 +108,15 @@ class Rule90 extends Hardening {
 class Blip extends Hardening {
     public double prob;
 
-    Blip(String type, double prob) {
-        super(type);
+    Blip(String type, double prob, int bfLen_) {
+        super(type, bfLen_);
         this.prob = prob;
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-
+    public BitSet harden_bf(BitSet bf) {
         Random random = new Random();
-        for (int i = 0; i < bf_len; i++) {
+        for (int i = 0; i < this.bfLen; i++) {
             double coin1 = random.nextDouble();
             if (coin1 <= this.prob) {
                 double coin2 = random.nextDouble();
@@ -134,17 +133,20 @@ class Blip extends Hardening {
 class Wxor extends Hardening {
     public int w_size;
 
-    Wxor(String type, int w_size) {
-        super(type);
+    Wxor(String type, int w_size, int bfLen_) {
+        super(type, bfLen_);
         this.type = String.format("WXOR %d", w_size);
         this.w_size = w_size;
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-        for (int i = 0; i < bf_len - this.w_size + 1; i++) {
-            for (int j = 1; j <= this.w_size; j++) {
-                if (bf.get(i) != bf.get((i + j) % bf_len)) bf.set(i);
+    public BitSet harden_bf(BitSet bf) {
+        for (int i = 0; i < this.bfLen - this.w_size + 1; i++) {
+            BitSet w1 = bf.get(i, i + this.w_size - 1);
+            BitSet w2 = bf.get(i + 1, i + this.w_size);
+            w1.and(w2);
+            for (int j = 0;j < this.w_size;j++){
+                if (w1.get(j)) bf.set(i + j);
             }
         }
         return bf;
@@ -156,15 +158,15 @@ class ResamXor extends Hardening {
     public List<int[]> index_pairs = null;
 
     ResamXor(String type, int bf_len) {
-        super(type);
+        super(type, bf_len);
         init_index_pair_list(bf_len);
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-        BitSet resam_bf = new BitSet(bf_len);
+    public BitSet harden_bf(BitSet bf) {
+        BitSet resam_bf = new BitSet(this.bfLen);
 
-        for (int i = 0; i < bf_len; i++) {
+        for (int i = 0; i < this.bfLen; i++) {
             int[] index_pair = this.index_pairs.get(i);
             if (bf.get(index_pair[0]) != bf.get(index_pair[1])) resam_bf.set(i);
         }
@@ -174,10 +176,9 @@ class ResamXor extends Hardening {
     private void init_index_pair_list(int bf_len) {
         if (this.index_pairs == null) {
             this.index_pairs = new ArrayList<>();
+            Random random = new Random();
+            random.setSeed(this.random_seed);
             for (int i = 0; i < bf_len; i++) {
-                Random random = new Random();
-                random.setSeed(this.random_seed);
-
                 int random_value1 = random.nextInt(bf_len);
                 int random_value2 = random.nextInt(bf_len);
                 int[] index_pair = {random_value1, random_value2};
@@ -201,11 +202,10 @@ class Urap extends Hardening {
     public int q;
     public boolean padded;
     public String num_hash_function;
-    public int bf_len;
 
     Urap(String type, double non_secret_ratio, double epsilon, String dataset_file, String encode_type, String hash_type, int q,
          boolean padded, String num_hash_function, int bf_len) {
-        super(type);
+        super(type, bf_len);
         this.non_secret_ratio = non_secret_ratio;
         this.epsilon = epsilon;
         this.theta = Math.exp(epsilon / 2) / (Math.exp(epsilon / 2) + 1);
@@ -217,31 +217,27 @@ class Urap extends Hardening {
         this.q = q;
         this.padded = padded;
         this.num_hash_function = num_hash_function;
-        this.bf_len = bf_len;
-        set_non_secret_index_list();
     }
 
+    @Override
     public void set_non_secret_index_list() {
         File file = new File(this.dataset_file);
         String file_path = file.getParent();
-        String freq_file = file_path + String.format("/20210101_freq/%s-%s-%d-%d-%s-%s.csv",
-                encode_type.toLowerCase(Locale.ROOT), hash_type, bf_len, q,
+        String freq_file = file_path + String.format("/20210101_freq/%s-%s-%d-%s-%s.csv",
+                encode_type.toLowerCase(Locale.ROOT), hash_type, q,
                 String.valueOf(padded).toLowerCase(Locale.ROOT), num_hash_function);
         try (FileReader fr = new FileReader(freq_file);
              BufferedReader br = new BufferedReader(fr)) {
-            String[] datasetColumns = br.readLine().replace("\"", "").split(",");
-
             String line = br.readLine();
             List<Integer> order_index_freq_list = new ArrayList<>();
             List<Integer> order_index_list = new ArrayList<>();
             int freq = 0;
             int index = 0;
-            while (line != null) {
+            while ((line = br.readLine()) != null) {
                 freq = Integer.parseInt(line);
                 if (index == 0) {
                     order_index_freq_list.add(freq);
                     order_index_list.add(index);
-                    line = br.readLine();
                     index += 1;
                     continue;
                 }
@@ -257,25 +253,25 @@ class Urap extends Hardening {
                         break;
                     }
                 }
-                line = br.readLine();
                 index += 1;
             }
 
-            int non_secret_len = (int) Math.round(non_secret_ratio * bf_len);
+            int non_secret_len = (int) Math.round(non_secret_ratio * this.bfLen);
             non_secret_index_list = order_index_list.subList(0, non_secret_len);
+            Collections.sort(non_secret_index_list);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
+    public BitSet harden_bf(BitSet bf) {
 
         Random random = new Random();
 
-        BitSet urap_bf = new BitSet(bf_len);
+        BitSet urap_bf = new BitSet(this.bfLen);
         assert this.non_secret_index_list != null;
-        for (int i = 0; i < bf_len; i++) {
+        for (int i = 0; i < this.bfLen; i++) {
             double rand_value = random.nextDouble();
             if (this.non_secret_index_list.contains(i)) {
                 // 如果不在敏感集里
@@ -314,15 +310,15 @@ class UrapProb extends Urap {
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
+    public BitSet harden_bf(BitSet bf) {
 
         Random random = new Random();
 
-        BitSet urap_bf = new BitSet(bf_len);
+        BitSet urap_bf = new BitSet(this.bfLen);
         assert this.non_secret_index_list != null;
         double coin1;
         double coin2;
-        for (int i = 0; i < bf_len; i++) {
+        for (int i = 0; i < this.bfLen; i++) {
             if (this.non_secret_index_list.contains(i)) {
                 // 如果不在敏感集里
                 // 0 必是 0
@@ -352,26 +348,25 @@ class UrapProb extends Urap {
 }
 
 class IndexD extends Urap {
-    public List<Integer> non_secret_index_list = null;
     public List<String> epsilons;
     public List<List<Integer>> indexGroup;
 
     IndexD(String type, List<String> epsilons_, String dataset_file, String encode_type, String hash_type, int q,
            boolean padded, String num_hash_function, int bf_len) {
         super(type, 0, 0.0, dataset_file, encode_type, hash_type, q, padded, num_hash_function, bf_len);
-        this.epsilons = epsilons_;
-        set_non_secret_index_list();
+        epsilons = epsilons_;
+        indexGroup = new ArrayList<>();
     }
 
-    public void set_non_secret_index_list() {
+    @Override
+    public void set_indexGroup_list() {
         File file = new File(this.dataset_file);
         String file_path = file.getParent();
-        String freq_file = file_path + String.format("/20210101_freq/%s-%s-%d-%d-%s-%s.csv",
-                encode_type.toLowerCase(Locale.ROOT), hash_type, bf_len, q,
+        String freq_file = file_path + String.format("/20210101_freq/%s-%s-%d-%s-%s.csv",
+                encode_type.toLowerCase(Locale.ROOT), hash_type, q,
                 String.valueOf(padded).toLowerCase(Locale.ROOT), num_hash_function);
         try (FileReader fr = new FileReader(freq_file);
              BufferedReader br = new BufferedReader(fr)) {
-            String[] datasetColumns = br.readLine().replace("\"", "").split(",");
             // initial the priority queue
             int size = this.epsilons.size();
             List<PriorityQueue<int[]>> priorityQueueList = new ArrayList<>();
@@ -384,12 +379,12 @@ class IndexD extends Urap {
                 });
                 priorityQueueList.add(priorityQueue);
             }
-            int queueSize = bf_len / size + 1;
+            int queueSize = this.bfLen / size + 1;
             // read the file
             String line = br.readLine();
             int freq = 0;
             int index = 0;
-            while (line != null) {
+            while ((line = br.readLine()) != null) {
                 freq = Integer.parseInt(line);
                 PriorityQueue<int[]> tempQueue;
                 int[] add_item = new int[]{freq, index};
@@ -400,13 +395,12 @@ class IndexD extends Urap {
                         add_item = tempQueue.poll();
                     } else break;
                 }
-                line = br.readLine();
                 index += 1;
             }
             // store and sort the index
             for (PriorityQueue<int[]> priorityQueue : priorityQueueList) {
                 List<Integer> indexList = new ArrayList<>();
-                while (!priorityQueue.isEmpty()) indexList.add(priorityQueue.poll()[0]);
+                while (!priorityQueue.isEmpty()) indexList.add(priorityQueue.poll()[1]);
                 Collections.sort(indexList);
                 indexGroup.add(indexList);
             }
@@ -416,22 +410,22 @@ class IndexD extends Urap {
     }
 
     @Override
-    public BitSet harden_bf(BitSet bf, int bf_len) {
-
-        BitSet indexD_bf = new BitSet(bf_len);
+    public BitSet harden_bf(BitSet bf) {
         double coin1;
         double coin2;
         Random random = new Random();
-        for (int i = 0; i < bf_len; i++) {
+        for (int i = 0; i < this.bfLen; i++) {
+            // 暂时epsilon是概率
             double epsilon = 0.0;
             // find the group which contains the index
             for (int j = 0; j < epsilons.size(); j++) {
                 if (indexGroup.get(j).contains(i)) {
-                    epsilon = Math.log(Double.parseDouble(epsilons.get(j)));
+                    epsilon = Double.parseDouble(epsilons.get(j));
                     break;
                 }
             }
-            double prob = Math.exp(epsilon) / (Math.exp(epsilon) + 1);
+//            double prob = Math.exp(epsilon) / (Math.exp(epsilon) + 1);
+            double prob = epsilon;
             coin1 = random.nextDouble();
             if (coin1 <= prob) {
                 coin2 = random.nextDouble();
@@ -440,7 +434,7 @@ class IndexD extends Urap {
             }
         }
 
-        return indexD_bf;
+        return bf;
     }
 }
 
