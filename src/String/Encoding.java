@@ -10,12 +10,12 @@ public class Encoding {
     public boolean padded;
     public boolean appendCntFlag;
 
-    public Encoding(String type, Hashing hash_method, int q, boolean padded, boolean appendCntFlag) {
+    public Encoding(String type, Hashing hash_method, int q, boolean padded, boolean appendCnt2Qgram) {
         this.type = type;
         this.hash_method = hash_method;
         this.q = q;
         this.padded = padded;
-        this.appendCntFlag = appendCntFlag;
+        this.appendCntFlag = appendCnt2Qgram;
     }
 
     public boolean isNumeric(String str) {
@@ -103,8 +103,8 @@ public class Encoding {
 
 class CLKBFEncoding extends Encoding {
 
-    CLKBFEncoding(String type, int q, boolean padded, Hashing hash_method, boolean deal_dup) {
-        super(type, hash_method, q, padded, deal_dup);
+    CLKBFEncoding(String type, int q, boolean padded, Hashing hash_method, boolean appendCnt2Qgram) {
+        super(type, hash_method, q, padded, appendCnt2Qgram);
     }
 
     @Override
@@ -163,8 +163,8 @@ class RecordBFEncoding extends Encoding {
     public List<Boolean> attr_deal_dup_list;
     private List<Integer> perm_index_list;
 
-    RecordBFEncoding(String type, int q, boolean padded, Hashing hash_method, boolean deal_dup) {
-        super(type, hash_method, q, padded, deal_dup);
+    RecordBFEncoding(String type, int q, boolean padded, Hashing hash_method, boolean appendCnt2Qgram) {
+        super(type, hash_method, q, padded, appendCnt2Qgram);
     }
     /* TODO
     Also note that Durham et al. proposed to select bit positions into
