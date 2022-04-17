@@ -1186,8 +1186,6 @@ public class EvalLinkage {
             };
             evalLinkage.hashing_method = hash_method; // 赋值给EvalLinkage
 
-            int times = 0;// the times do linkage, when i == 0, do block and q_gram sim
-
             // Store precision and recall result
             List<Double> qgramPrecisions = new ArrayList<>();
             List<Double> qgramRecalls = new ArrayList<>();
@@ -1207,12 +1205,14 @@ public class EvalLinkage {
             for (String encode_type : encode_type_list) {
                 // TODO 添加MC
                 for (String num_hash_functions : num_hash_functions_list) {
+
+                    int times = 0;// the times do linkage, when i == 0, do block and q_gram sim
+
                     for (String bf_harden_type : bf_harden_types) {
                         bf_len = 1000;
                         System.out.printf("\nEncoding Type: %s, Hardening Type: %s\n", encode_type, bf_harden_type);
                         if (bf_harden_type.equals("salt")) {
 //            salt_attr_index = Integer.parseInt(sys.argv[15]);
-                            salt_attr_index = 6;
                         } else if (bf_harden_type.startsWith("wxor")) {
                             w_size = Integer.parseInt(bf_harden_type.split("-")[1]);
                         } else if (bf_harden_type.startsWith("blip")) {
@@ -1255,6 +1255,10 @@ public class EvalLinkage {
                             //
                             rec_q_gram_dict2 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict2);
                             evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q, padded);
+
+                            // store q gram
+                            evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded);
+                            evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded);
 
                             // Set num of hash functions
                             if (num_hash_functions.equals("opt")) {
@@ -1313,13 +1317,12 @@ public class EvalLinkage {
                         evalLinkage.storeBF(data_set_file_name1, rec_bf_dict1, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
                         evalLinkage.storeBF(data_set_file_name2, rec_bf_dict2, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
 
+                        // only when harden type is none, do statistic B.D.Q
                         if (bf_harden_type == "none") {
                             evalLinkage.statisticBDQ(data_set_file_name1, rec_q_gram_dict1, rec_bf_dict1, hash_type,
                                     appendCntFlag, num_hash_functions);
                             evalLinkage.statisticBDQ(data_set_file_name2, rec_q_gram_dict2, rec_bf_dict2, hash_type,
                                     appendCntFlag, num_hash_functions);
-                            evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded);
-                            evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded);
                         }
 
                         System.out.printf("Time used for generating bf dict:         %d msec%n", new Date().getTime() - start_time);
@@ -1391,6 +1394,7 @@ public class EvalLinkage {
                         assert block_dict2 != null;
                         Map<String[], Double> bf_rec_pair_dict = evalLinkage.conduct_bf_linkage(rec_bf_dict1, block_dict1,
                                 rec_bf_dict2, block_dict2, min_sim);
+                        // store pair and pair's sim
                         evalLinkage.storeBFPair(data_set_file_name1, bf_rec_pair_dict, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
 
                         long bf_linkage_time = new Date().getTime() - start_time;
