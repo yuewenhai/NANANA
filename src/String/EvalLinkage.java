@@ -987,11 +987,11 @@ public class EvalLinkage {
                 }
             }
 
-            String line = "ID:QGram"; // ',' 容易其冲突
+            String line = "ID,QGram"; // ',' 容易其冲突
             bw.write(line + "\n");
             for (String entityID : rec_q_gram_dict.keySet()){
                 List<String> list = rec_q_gram_dict.get(entityID);
-                bw.write(String.format("%s:%s", entityID, strList2String(list)));
+                bw.write(String.format("%s,%s\n", entityID, strList2String(list).replace(",", " ")));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1018,11 +1018,11 @@ public class EvalLinkage {
                 }
             }
 
-            String line = "ID:BF";
+            String line = "ID,BF";
             bw.write(line + "\n");
             for (String entityID : rec_bf_dict.keySet()){
                 BitSet bitSet = rec_bf_dict.get(entityID);
-                bw.write(String.format("%s:%s", entityID, bitSet.toString()));
+                bw.write(String.format("%s,%s\n", entityID, bitSet.toString().replace(","," ")));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1049,11 +1049,11 @@ public class EvalLinkage {
                 }
             }
 
-            String line = "IDPair:Sim";
+            String line = "IDPair,Sim";
             bw.write(line + "\n");
             for (String[] entityIDPair : bf_rec_pair_dict.keySet()){
                 double sim = bf_rec_pair_dict.get(entityIDPair);
-                bw.write(String.format("%s:%.4f", strList2String(Arrays.stream(entityIDPair).toList()), sim));
+                bw.write(String.format("%s,%.4f\n", strList2String(Arrays.stream(entityIDPair).toList()).replace(",", " "), sim));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1063,19 +1063,62 @@ public class EvalLinkage {
 
     public static void main(String[] args) {
         String res_plot_file_name = "/Users/takafumikai/PycharmProjects/LDP-BV/result/result-auc.png";
-        String data_set_file_name1 = "/Users/takafumikai/PycharmProjects/LDP-BV/dataset/ncvoter/ncvoter-50000-1.csv";
-        String data_set_file_name2 = "/Users/takafumikai/PycharmProjects/LDP-BV/dataset/ncvoter/ncvoter-50000-2.csv";
-        int[] attr_index_list = {1, 2, 4, 5};  // attr's columns used
+        String data_set_file_name1 = "D:/dataset/Istat/census.csv";
+        String data_set_file_name2 = "D:/dataset/Istat/census.csv";
+        String bitFreqFilePath = "D:/dataset/Istat/freq/";
+        String dateDiff = "none";
+        int[] attr_index_list = {1, 2, 8};  // attr's columns used
         int entity_id_col = 0;
         double[] sim_threshold_list = {0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0};
         String block_method = "minhash-32-5";
         int q = 2;
         boolean padded = false;
         int bf_len = 1000;
-        String hash_type = "rh-False";
+        String[] hash_type_list = new String[]{"dh-false", "dh-true", "rh-false", "rh-true"};
         String[] num_hash_functions_list = {"10", "20", "30"};
         String[] encode_type_list = {"clk"};
-        String[] bf_harden_types = new String[]{"urap-0.9-2", "urap-0.9-1", "urap-0.8-2", "urap-0.8-1","urap-0.9-5", "urap-0.9-6", "urap-0.8-5", "urap-0.8-6"};
+        String[] bf_harden_types = new String[]{
+                "none",
+                "salt",
+                "bal",
+                "rxor",
+                "wxor-2",
+                "blip-0.05",
+                "blip-0.02",
+                "blip-0.1",
+                "urap-0.5-1",
+                "urap-0.5-2",
+                "urap-0.5-3",
+                "urap-0.5-4",
+                "urap-0.5-5",
+                "urap-0.5-6",
+                "urap-0.6-1",
+                "urap-0.6-2",
+                "urap-0.6-3",
+                "urap-0.6-4",
+                "urap-0.6-5",
+                "urap-0.6-6",
+                "urap-0.7-1",
+                "urap-0.7-2",
+                "urap-0.7-3",
+                "urap-0.7-4",
+                "urap-0.7-5",
+                "urap-0.7-6",
+                "urap-0.8-1",
+                "urap-0.8-2",
+                "urap-0.8-3",
+                "urap-0.8-4",
+                "urap-0.8-5",
+                "urap-0.8-6",
+                "urap-0.9-1",
+                "urap-0.9-2",
+                "urap-0.9-3",
+                "urap-0.9-4",
+                "urap-0.9-5",
+                "urap-0.9-6",
+                "indexD-0.2,0.01,0.05,0.02,0",
+                "indexD-0.1,0.05,0.02,0.01,0"
+        };
 
         for (double sim_threshold : sim_threshold_list) {
             assert 0.0 <= sim_threshold;
@@ -1093,9 +1136,6 @@ public class EvalLinkage {
                 lsh_num_band = Integer.parseInt(block_method.split("-")[1]);
             }
         }
-
-        boolean appendCntFlag = hash_type.split("-")[1].toLowerCase(Locale.ROOT).equals("true");
-        hash_type = hash_type.split("-")[0].toLowerCase(Locale.ROOT);
 
 //        int mc_chain_len = 0;
 //        String mc_sel_method = null;
@@ -1133,274 +1173,277 @@ public class EvalLinkage {
             all_rec_list.add(rec_attr_val_dict2.get(entity_id));
         }
 
-        // Initialise the hashing method
-        //
-        Hashing hash_method = switch (hash_type) {
-            case "dh" -> new DoubleHashing("dh", bf_hash_function1, bf_hash_function2, bf_len, 0);
-            case "rh" -> new RandomHashing("rh", bf_hash_function1, bf_len, 0);
-            case "edh" -> new EnhancedDoubleHashing("edh", bf_hash_function1, bf_hash_function2, bf_len, 0);
-            default -> null;
-        };
-        evalLinkage.hashing_method = hash_method; // 赋值给EvalLinkage
+        for (String hash_type : hash_type_list) {
+            // Initialise the hashing method
+            //
+            boolean appendCntFlag = hash_type.split("-")[1].toLowerCase(Locale.ROOT).equals("true");
+            String hashType = hash_type.split("-")[0].toLowerCase(Locale.ROOT);
+            Hashing hash_method = switch (hashType) {
+                case "dh" -> new DoubleHashing("dh", bf_hash_function1, bf_hash_function2, bf_len, 0);
+                case "rh" -> new RandomHashing("rh", bf_hash_function1, bf_len, 0);
+                case "edh" -> new EnhancedDoubleHashing("edh", bf_hash_function1, bf_hash_function2, bf_len, 0);
+                default -> null;
+            };
+            evalLinkage.hashing_method = hash_method; // 赋值给EvalLinkage
 
-        int times = 0;// the times do linkage, when i == 0, do block and q_gram sim
+            int times = 0;// the times do linkage, when i == 0, do block and q_gram sim
 
-        // Store precision and recall result
-        List<Double> qgramPrecisions = new ArrayList<>();
-        List<Double> qgramRecalls = new ArrayList<>();
-        List<List<Double>> enc_prec_list = new ArrayList<>();
-        List<List<Double>> enc_reca_list = new ArrayList<>();
+            // Store precision and recall result
+            List<Double> qgramPrecisions = new ArrayList<>();
+            List<Double> qgramRecalls = new ArrayList<>();
+            List<List<Double>> enc_prec_list = new ArrayList<>();
+            List<List<Double>> enc_reca_list = new ArrayList<>();
 
-        // Initialize the legend list
-        List<String> legend_str_list = new ArrayList<>();
-        legend_str_list.add("Q-Gram");
+            // Initialize the legend list
+            List<String> legend_str_list = new ArrayList<>();
+            legend_str_list.add("Q-Gram");
 
-        //Initialize
-        Map<String, Set<String>> block_dict1 = null;
-        Map<String, Set<String>> block_dict2 = null;
-        Map<String, List<String>> rec_q_gram_dict1 = null;
-        Map<String, List<String>> rec_q_gram_dict2 = null;
+            //Initialize
+            Map<String, Set<String>> block_dict1 = null;
+            Map<String, Set<String>> block_dict2 = null;
+            Map<String, List<String>> rec_q_gram_dict1 = null;
+            Map<String, List<String>> rec_q_gram_dict2 = null;
 
-        for (String encode_type : encode_type_list) {
-            // TODO 添加MC
-            for (String num_hash_functions : num_hash_functions_list) {
-                for (String bf_harden_type : bf_harden_types) {
-                    bf_len = 1000;
-                    System.out.printf("\nEncoding Type: %s, Hardening Type: %s\n", encode_type, bf_harden_type);
-                    if (bf_harden_type.equals("salt")) {
+            for (String encode_type : encode_type_list) {
+                // TODO 添加MC
+                for (String num_hash_functions : num_hash_functions_list) {
+                    for (String bf_harden_type : bf_harden_types) {
+                        bf_len = 1000;
+                        System.out.printf("\nEncoding Type: %s, Hardening Type: %s\n", encode_type, bf_harden_type);
+                        if (bf_harden_type.equals("salt")) {
 //            salt_attr_index = Integer.parseInt(sys.argv[15]);
-                        salt_attr_index = 6;
-                    } else if (bf_harden_type.startsWith("wxor")) {
-                        w_size = Integer.parseInt(bf_harden_type.split("-")[1]);
-                    } else if (bf_harden_type.startsWith("blip")) {
-                        flip_prob = Double.parseDouble(bf_harden_type.split("-")[1]);
-                        // random_choice = True
-                    } else if (bf_harden_type.startsWith("urap")) {
-                        epsilon = Double.parseDouble(bf_harden_type.split("-")[2]);
-                        ratio = Double.parseDouble(bf_harden_type.split("-")[1]);
-                    } else if (bf_harden_type.startsWith("indexd")) {
-                        // epsilon will be turned to ln(epsilon) in harden method
-                        epsilons = new ArrayList<>(Arrays.asList(bf_harden_type.split("-")[1].split(",")));
-                    }
-
-                    Encoding encode_method = null;
-                    if (encode_type.equals("clk")) {
-                        encode_method = new CLKBFEncoding("CLK", q, padded, hash_method, appendCntFlag);
-                    } else if (encode_type.startsWith("rbf")) {
-                        // Calculate number of bits to be sampled as total Bloom filter length
-                        // divided by the number of attributes
-                        //
-                        int num_bf_bit = bf_len / attr_index_list.length;
-                        encode_method = new RecordBFEncoding(encode_type.toUpperCase(Locale.ROOT), q, padded, hash_method, appendCntFlag);
-                        for (int index : attr_index_list) {
-                            //TODO Dynamic ABF length
-                            encode_method.set_attr_param_list(q, padded, num_bf_bit, appendCntFlag);
+                            salt_attr_index = 6;
+                        } else if (bf_harden_type.startsWith("wxor")) {
+                            w_size = Integer.parseInt(bf_harden_type.split("-")[1]);
+                        } else if (bf_harden_type.startsWith("blip")) {
+                            flip_prob = Double.parseDouble(bf_harden_type.split("-")[1]);
+                            // random_choice = True
+                        } else if (bf_harden_type.startsWith("urap")) {
+                            epsilon = Double.parseDouble(bf_harden_type.split("-")[2]);
+                            ratio = Double.parseDouble(bf_harden_type.split("-")[1]);
+                        } else if (bf_harden_type.startsWith("indexd")) {
+                            // epsilon will be turned to ln(epsilon) in harden method
+                            epsilons = new ArrayList<>(Arrays.asList(bf_harden_type.split("-")[1].split(",")));
                         }
-                    }
-                    evalLinkage.encoding_method = encode_method; // 赋值给EvalLinkage
 
-                    // only generate q-gram list \ k \ harden_method once
-                    Hardening harden_method = null;
-                    if (times == 0) {
-                        // Generate q-grams for the attribute value lists and add into a
-                        // dictionary for data set1
-                        //
-                        rec_q_gram_dict1 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict1);
-                        evalLinkage.statisticDupQGram(data_set_file_name1, rec_q_gram_dict1, q, padded);
-                        // Generate q-grams for the attribute value lists and add into a
-                        // dictionary for data set2
-                        //
-                        rec_q_gram_dict2 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict2);
-                        evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q, padded);
-
-                        // Set num of hash functions
-                        if (num_hash_functions.equals("opt")) {
-                            evalLinkage.hashing_method.num_hash_function = evalLinkage.cal_opt_k(rec_q_gram_dict1, rec_q_gram_dict2, bf_len);
-                        } else {
-                            evalLinkage.hashing_method.num_hash_function = Integer.parseInt(num_hash_functions);
-                        }
-                    }
-
-                    // Initalise the hardening method if needed
-                    //
-                    if (bf_harden_type.equals("none") || bf_harden_type.equals("salt"))
-                        harden_method = null;
-                    else if (bf_harden_type.equals("bal")) {
-                        harden_method = new Balancing("Balancing", bf_len);
-                        bf_len *= 2;
-                    } else if (bf_harden_type.equals("xor")) {
-                        harden_method = new XorFolding("Xor-fold", bf_len);
-                        bf_len /= 2;
-                    } else if (bf_harden_type.equals("r90")) {
-                        harden_method = new Rule90("Rule 90", bf_len);
-                    } else if (bf_harden_type.startsWith("blip")) {
-                        harden_method = new Blip(String.format("Blip %.2f", flip_prob), flip_prob, bf_len);
-                    }
-                    //TODO MarkovChain Harden
-                    else if (bf_harden_type.startsWith("wxor")) {
-                        harden_method = new Wxor(String.format("WXOR %d", w_size), w_size, bf_len);
-                    } else if (bf_harden_type.equals("rexor")) {
-                        harden_method = new ResamXor("REXOR", bf_len);
-                    } else if (bf_harden_type.startsWith("urap")) {
-                        harden_method = new Urap(String.format("Urap %.2f %.2f", ratio, epsilon), ratio, epsilon,
-                                data_set_file_name1, encode_method.type, hash_type, q, padded,
-                                num_hash_functions, bf_len);
-                        harden_method.set_non_secret_index_list();
-                    } else if (bf_harden_type.startsWith("indexd")) {
-                        harden_method = new IndexD(bf_harden_type, epsilons,
-                                data_set_file_name1, encode_method.type, hash_type, q, padded,
-                                num_hash_functions, bf_len);
-                        harden_method.set_indexGroup_list();
-                    }
-                    evalLinkage.hardening_method = harden_method; // 赋值给EvalLinkage
-
-                    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                    // Encode data sets into Bloom filters
-                    //
-                    long start_time = new Date().getTime();
-                    Map<String, BitSet> rec_bf_dict1;
-                    Map<String, BitSet> rec_bf_dict2;
-                    if (encode_type.equals("clk")) {
-                        rec_bf_dict1 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict1, salt_dict1, bf_harden_type, bf_len);
-                        rec_bf_dict2 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict1, salt_dict2, bf_harden_type, bf_len);
-                    } else {
-                        rec_bf_dict1 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict1, bf_harden_type, bf_len);
-                        rec_bf_dict2 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict2, bf_harden_type, bf_len);
-                    }
-                    evalLinkage.storeBF(data_set_file_name1, rec_bf_dict1, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
-                    evalLinkage.storeBF(data_set_file_name2, rec_bf_dict2, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
-
-                    if (bf_harden_type == "none") {
-                        evalLinkage.statisticBDQ(data_set_file_name1, rec_q_gram_dict1, rec_bf_dict1, hash_type,
-                                appendCntFlag, num_hash_functions);
-                        evalLinkage.statisticBDQ(data_set_file_name2, rec_q_gram_dict2, rec_bf_dict2, hash_type,
-                                appendCntFlag, num_hash_functions);
-                        evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded);
-                        evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded);
-                    }
-
-                    System.out.printf("Time used for generating bf dict:         %d msec%n", new Date().getTime() - start_time);
-
-                    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                    // Perform the linkage (possibly do blocking first)
-                    //
-                    start_time = new Date().getTime();
-
-                    if (block_method.equals("none")) {
-                        if (times == 0) {
-                            // Generate one blocking value per data set (so all records in one block)
+                        Encoding encode_method = null;
+                        if (encode_type.equals("clk")) {
+                            encode_method = new CLKBFEncoding("CLK", q, padded, hash_method, appendCntFlag);
+                        } else if (encode_type.startsWith("rbf")) {
+                            // Calculate number of bits to be sampled as total Bloom filter length
+                            // divided by the number of attributes
                             //
-                            block_dict1 = new HashMap<>();
-                            block_dict1.put("all", rec_q_gram_dict1.keySet());
-                            block_dict2 = new HashMap<>();
-                            block_dict2.put("all", rec_q_gram_dict2.keySet());
+                            int num_bf_bit = bf_len / attr_index_list.length;
+                            encode_method = new RecordBFEncoding(encode_type.toUpperCase(Locale.ROOT), q, padded, hash_method, appendCntFlag);
+                            for (int index : attr_index_list) {
+                                //TODO Dynamic ABF length
+                                encode_method.set_attr_param_list(q, padded, num_bf_bit, appendCntFlag);
+                            }
                         }
-                    } else {
-                        if (block_method.startsWith("minhash")) {
-                            if (times == 0) {
-                                // Initialise min-hash parameters
-                                // -------------------------------
-                                // lsh_band_size = 5
-                                // lsh_num_band  = 32
-                                // -------------------------------
-                                List<List<Integer>> result = evalLinkage.init_minhash(lsh_band_size, lsh_num_band);
-                                List<Integer> coeff_a_list = result.get(0);
-                                List<Integer> coeff_b_list = result.get(1);
+                        evalLinkage.encoding_method = encode_method; // 赋值给EvalLinkage
 
-                                // Min-hash based blocking
-                                block_dict1 = evalLinkage.minhash_blocking(rec_q_gram_dict1, coeff_a_list,
-                                        coeff_b_list, lsh_band_size, lsh_num_band);
-                                block_dict2 = evalLinkage.minhash_blocking(rec_q_gram_dict2, coeff_a_list,
-                                        coeff_b_list, lsh_band_size, lsh_num_band);
+                        // only generate q-gram list \ k \ harden_method once
+                        Hardening harden_method = null;
+                        if (times == 0) {
+                            // Generate q-grams for the attribute value lists and add into a
+                            // dictionary for data set1
+                            //
+                            rec_q_gram_dict1 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict1);
+                            evalLinkage.statisticDupQGram(data_set_file_name1, rec_q_gram_dict1, q, padded);
+                            // Generate q-grams for the attribute value lists and add into a
+                            // dictionary for data set2
+                            //
+                            rec_q_gram_dict2 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict2);
+                            evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q, padded);
+
+                            // Set num of hash functions
+                            if (num_hash_functions.equals("opt")) {
+                                evalLinkage.hashing_method.num_hash_function = evalLinkage.cal_opt_k(rec_q_gram_dict1, rec_q_gram_dict2, bf_len);
+                            } else {
+                                evalLinkage.hashing_method.num_hash_function = Integer.parseInt(num_hash_functions);
+                            }
+                        }
+
+                        // Initalise the hardening method if needed
+                        //
+                        if (bf_harden_type.equals("none") || bf_harden_type.equals("salt"))
+                            harden_method = null;
+                        else if (bf_harden_type.equals("bal")) {
+                            harden_method = new Balancing("Balancing", bf_len);
+                            bf_len *= 2;
+                        } else if (bf_harden_type.equals("xor")) {
+                            harden_method = new XorFolding("Xor-fold", bf_len);
+                            bf_len /= 2;
+                        } else if (bf_harden_type.equals("r90")) {
+                            harden_method = new Rule90("Rule 90", bf_len);
+                        } else if (bf_harden_type.startsWith("blip")) {
+                            harden_method = new Blip(String.format("Blip %.2f", flip_prob), flip_prob, bf_len);
+                        }
+                        //TODO MarkovChain Harden
+                        else if (bf_harden_type.startsWith("wxor")) {
+                            harden_method = new Wxor(String.format("WXOR %d", w_size), w_size, bf_len);
+                        } else if (bf_harden_type.equals("rexor")) {
+                            harden_method = new ResamXor("REXOR", bf_len);
+                        } else if (bf_harden_type.startsWith("urap")) {
+                            harden_method = new Urap(String.format("Urap %.2f %.2f", ratio, epsilon), ratio, epsilon,
+                                    data_set_file_name1, encode_method.type, hashType, q, padded,
+                                    num_hash_functions, bf_len);
+                            harden_method.set_non_secret_index_list(bitFreqFilePath);
+                        } else if (bf_harden_type.startsWith("indexd")) {
+                            harden_method = new IndexD(bf_harden_type, epsilons,
+                                    data_set_file_name1, encode_method.type, hashType, q, padded,
+                                    num_hash_functions, bf_len);
+                            harden_method.set_indexGroup_list(bitFreqFilePath);
+                        }
+                        evalLinkage.hardening_method = harden_method; // 赋值给EvalLinkage
+
+                        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+                        // Encode data sets into Bloom filters
+                        //
+                        long start_time = new Date().getTime();
+                        Map<String, BitSet> rec_bf_dict1;
+                        Map<String, BitSet> rec_bf_dict2;
+                        if (encode_type.equals("clk")) {
+                            rec_bf_dict1 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict1, salt_dict1, bf_harden_type, bf_len);
+                            rec_bf_dict2 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict1, salt_dict2, bf_harden_type, bf_len);
+                        } else {
+                            rec_bf_dict1 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict1, bf_harden_type, bf_len);
+                            rec_bf_dict2 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict2, bf_harden_type, bf_len);
+                        }
+                        evalLinkage.storeBF(data_set_file_name1, rec_bf_dict1, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
+                        evalLinkage.storeBF(data_set_file_name2, rec_bf_dict2, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
+
+                        if (bf_harden_type == "none") {
+                            evalLinkage.statisticBDQ(data_set_file_name1, rec_q_gram_dict1, rec_bf_dict1, hash_type,
+                                    appendCntFlag, num_hash_functions);
+                            evalLinkage.statisticBDQ(data_set_file_name2, rec_q_gram_dict2, rec_bf_dict2, hash_type,
+                                    appendCntFlag, num_hash_functions);
+                            evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded);
+                            evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded);
+                        }
+
+                        System.out.printf("Time used for generating bf dict:         %d msec%n", new Date().getTime() - start_time);
+
+                        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+                        // Perform the linkage (possibly do blocking first)
+                        //
+                        start_time = new Date().getTime();
+
+                        if (block_method.equals("none")) {
+                            if (times == 0) {
+                                // Generate one blocking value per data set (so all records in one block)
+                                //
+                                block_dict1 = new HashMap<>();
+                                block_dict1.put("all", rec_q_gram_dict1.keySet());
+                                block_dict2 = new HashMap<>();
+                                block_dict2.put("all", rec_q_gram_dict2.keySet());
                             }
                         } else {
-                            if (times == 0) {
-                                block_dict1 = evalLinkage.hlsh_blocking(rec_bf_dict1, block_hlsh_num_seg);
-                                block_dict2 = evalLinkage.hlsh_blocking(rec_bf_dict2, block_hlsh_num_seg);
+                            if (block_method.startsWith("minhash")) {
+                                if (times == 0) {
+                                    // Initialise min-hash parameters
+                                    // -------------------------------
+                                    // lsh_band_size = 5
+                                    // lsh_num_band  = 32
+                                    // -------------------------------
+                                    List<List<Integer>> result = evalLinkage.init_minhash(lsh_band_size, lsh_num_band);
+                                    List<Integer> coeff_a_list = result.get(0);
+                                    List<Integer> coeff_b_list = result.get(1);
+
+                                    // Min-hash based blocking
+                                    block_dict1 = evalLinkage.minhash_blocking(rec_q_gram_dict1, coeff_a_list,
+                                            coeff_b_list, lsh_band_size, lsh_num_band);
+                                    block_dict2 = evalLinkage.minhash_blocking(rec_q_gram_dict2, coeff_a_list,
+                                            coeff_b_list, lsh_band_size, lsh_num_band);
+                                }
+                            } else {
+                                if (times == 0) {
+                                    block_dict1 = evalLinkage.hlsh_blocking(rec_bf_dict1, block_hlsh_num_seg);
+                                    block_dict2 = evalLinkage.hlsh_blocking(rec_bf_dict2, block_hlsh_num_seg);
+                                }
                             }
                         }
+
+                        double min_sim = sim_threshold_list[0];
+
+                        long blocking_time = new Date().getTime() - start_time;
+
+                        // pais-completeness
+                        System.out.printf("Time used for blocking:             %d msec%n", blocking_time);
+
+                        // Perform q-gram based and Bloom filter linkage
+                        //
+                        start_time = new Date().getTime();
+                        Map<String[], Double> q_gram_rec_pair_dict;
+                        long q_gram_linkage_time = 0;
+                        Map<Double, int[]> q_gram_class_res_dict = null;
+                        if (times == 0) {
+                            q_gram_rec_pair_dict = evalLinkage.conduct_q_gram_linkage(rec_q_gram_dict1, block_dict1,
+                                    rec_q_gram_dict2, block_dict2, min_sim);
+
+                            q_gram_linkage_time = new Date().getTime() - start_time;
+                            q_gram_class_res_dict = evalLinkage.calc_linkage_outcomes(q_gram_rec_pair_dict, sim_threshold_list);
+                        }
+
+                        start_time = new Date().getTime();
+
+                        assert block_dict1 != null;
+                        assert block_dict2 != null;
+                        Map<String[], Double> bf_rec_pair_dict = evalLinkage.conduct_bf_linkage(rec_bf_dict1, block_dict1,
+                                rec_bf_dict2, block_dict2, min_sim);
+                        evalLinkage.storeBFPair(data_set_file_name1, bf_rec_pair_dict, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
+
+                        long bf_linkage_time = new Date().getTime() - start_time;
+                        Map<Double, int[]> bf_class_res_dict = evalLinkage.calc_linkage_outcomes(bf_rec_pair_dict, sim_threshold_list);
+
+                        System.out.printf("\nEncoding method used:               %s%n", encode_type);
+
+                        System.out.printf("Time used for q-gram linkage:       %d msec%n", q_gram_linkage_time);
+
+                        System.out.printf("Time used for Bloom filter linkage: %d msec%n", bf_linkage_time);
+
+                        // Calculate precision and recall values for the different thresholds
+                        //
+                        if (times == 0) {
+                            calc_precisions_recalls(sim_threshold_list, q_gram_class_res_dict, qgramPrecisions, qgramRecalls);
+
+                            String qgramResultFilePath = new File(data_set_file_name1).getParent();
+                            String qgramResultFilename = String.format("q%d-padded%s-appendCntFlag%s.csv", q, padded, appendCntFlag);
+                            String qgramResultFile = qgramResultFilePath + "/result/" + qgramResultFilename;
+                            evalLinkage.storeResult(qgramResultFile, qgramPrecisions, qgramRecalls);
+                        }
+                        List<Double> bfPrecisions = new ArrayList<>();
+                        List<Double> bfRecalls = new ArrayList<>();
+
+                        calc_precisions_recalls(sim_threshold_list, bf_class_res_dict, bfPrecisions, bfRecalls);
+                        System.out.printf("similarity threshold: %s%n", Arrays.toString(sim_threshold_list));
+                        System.out.printf("q prec: %s%n", qgramPrecisions);
+                        System.out.printf("q reca: %s%n", qgramRecalls);
+                        System.out.printf("bf prec:%s%n", bfPrecisions);
+                        System.out.printf("bf reca: %s%n", bfRecalls);
+
+                        enc_prec_list.add(bfPrecisions);
+                        enc_reca_list.add(bfRecalls);
+
+                        times += 1;
+
+                        if (bf_harden_type.equals("bal")) bf_len = bf_len / 2;
+                        if (bf_harden_type.equals("xor")) bf_len = bf_len * 2;
+
+                        legend_str_list.add(encode_type.toUpperCase(Locale.ROOT));
+
+                        String resultFilePath = new File(data_set_file_name1).getParent();
+                        String resultFilename = String.format("%s-q%d-k%s-bflen%d.csv", bf_harden_type, q, num_hash_functions, bf_len);
+                        String resultFile = resultFilePath + String.format("/result/%s/%s/",
+                                encode_type.toUpperCase(Locale.ROOT), hash_type.toUpperCase(Locale.ROOT)) + resultFilename;
+                        evalLinkage.storeResult(resultFile, bfPrecisions, bfRecalls);
+                        // Print a line with summary memory and timing results
+                        System.out.printf("Result saved in %s, block time: %d, q-gram link time: %d, bf link time: %d %n",
+                                resultFile, blocking_time, q_gram_linkage_time, bf_linkage_time);
+
                     }
-
-                    double min_sim = sim_threshold_list[0];
-
-                    long blocking_time = new Date().getTime() - start_time;
-
-                    // pais-completeness
-                    System.out.printf("Time used for blocking:             %d msec%n", blocking_time);
-
-                    // Perform q-gram based and Bloom filter linkage
-                    //
-                    start_time = new Date().getTime();
-                    Map<String[], Double> q_gram_rec_pair_dict;
-                    long q_gram_linkage_time = 0;
-                    Map<Double, int[]> q_gram_class_res_dict = null;
-                    if (times == 0) {
-                        q_gram_rec_pair_dict = evalLinkage.conduct_q_gram_linkage(rec_q_gram_dict1, block_dict1,
-                                rec_q_gram_dict2, block_dict2, min_sim);
-
-                        q_gram_linkage_time = new Date().getTime() - start_time;
-                        q_gram_class_res_dict = evalLinkage.calc_linkage_outcomes(q_gram_rec_pair_dict, sim_threshold_list);
-                    }
-
-                    start_time = new Date().getTime();
-
-                    assert block_dict1 != null;
-                    assert block_dict2 != null;
-                    Map<String[], Double> bf_rec_pair_dict = evalLinkage.conduct_bf_linkage(rec_bf_dict1, block_dict1,
-                            rec_bf_dict2, block_dict2, min_sim);
-                    evalLinkage.storeBFPair(data_set_file_name1, bf_rec_pair_dict, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
-
-                    long bf_linkage_time = new Date().getTime() - start_time;
-                    Map<Double, int[]> bf_class_res_dict = evalLinkage.calc_linkage_outcomes(bf_rec_pair_dict, sim_threshold_list);
-
-                    System.out.printf("\nEncoding method used:               %s%n", encode_type);
-
-                    System.out.printf("Time used for q-gram linkage:       %d msec%n", q_gram_linkage_time);
-
-                    System.out.printf("Time used for Bloom filter linkage: %d msec%n", bf_linkage_time);
-
-                    // Calculate precision and recall values for the different thresholds
-                    //
-                    if (times == 0) {
-                        calc_precisions_recalls(sim_threshold_list, q_gram_class_res_dict, qgramPrecisions, qgramRecalls);
-
-                        String qgramResultFilePath = new File(data_set_file_name1).getParent();
-                        String qgramResultFilename = String.format("q%d-padded%s-appendCntFlag%s.csv", q, padded, appendCntFlag);
-                        String qgramResultFile = qgramResultFilePath + "/result/" + qgramResultFilename;
-                        evalLinkage.storeResult(qgramResultFile, qgramPrecisions, qgramRecalls);
-                    }
-                    List<Double> bfPrecisions = new ArrayList<>();
-                    List<Double> bfRecalls = new ArrayList<>();
-
-                    calc_precisions_recalls(sim_threshold_list, bf_class_res_dict, bfPrecisions, bfRecalls);
-                    System.out.printf("similarity threshold: %s%n", Arrays.toString(sim_threshold_list));
-                    System.out.printf("q prec: %s%n", qgramPrecisions);
-                    System.out.printf("q reca: %s%n", qgramRecalls);
-                    System.out.printf("bf prec:%s%n", bfPrecisions);
-                    System.out.printf("bf reca: %s%n", bfRecalls);
-
-                    enc_prec_list.add(bfPrecisions);
-                    enc_reca_list.add(bfRecalls);
-
-                    times += 1;
-
-                    if (bf_harden_type.equals("bal")) bf_len = bf_len / 2;
-                    if (bf_harden_type.equals("xor")) bf_len = bf_len * 2;
-
-                    legend_str_list.add(encode_type.toUpperCase(Locale.ROOT));
-
-                    String resultFilePath = new File(data_set_file_name1).getParent();
-                    String resultFilename = String.format("%s-q%d-k%s-bflen%d.csv", bf_harden_type, q, num_hash_functions, bf_len);
-                    String resultFile = resultFilePath + String.format("/result/%s/%s/",
-                            encode_type.toUpperCase(Locale.ROOT), hash_type.toUpperCase(Locale.ROOT)) + resultFilename;
-                    evalLinkage.storeResult(resultFile, bfPrecisions, bfRecalls);
-                    // Print a line with summary memory and timing results
-                    System.out.printf("Result saved in %s, block time: %d, q-gram link time: %d, bf link time: %d %n",
-                            resultFile, blocking_time, q_gram_linkage_time, bf_linkage_time);
-
                 }
-            }
-            //TODO 画图
+                //TODO 画图
 //            draw_plot_auc(qgramPrecisions, qgramRecalls, enc_prec_list, enc_reca_list,
 //                    "Precision","Recall",legend_str_list, param_plot_title_str,
 //                    title2="", save_fig_name=res_plot_file_name,
@@ -1409,6 +1452,7 @@ public class EvalLinkage {
 //            draw_plot_precision_recall(qgramPrecisions, qgramRecalls, enc_prec_list, enc_reca_list, sim_threshold_list,
 //                    legend_str_list, param_plot_title_str,
 //                    save_fig_name=res_plot_file_name.replace("auc", "split"),aspect_ratio=PLOT_RATIO)
+            }
         }
         return;
     }

@@ -62,14 +62,16 @@ public class Encoding {
     }
 
 
-    void add_count_2_q_gram(List<String> q_gram_list) {
+    public List<String> add_count_2_q_gram(List<String> q_gram_list) {
         Map<String, Integer> qGramCountMap = new HashMap<>();
+        List<String> qGramCntList = new ArrayList<>();
         int count;
         for (String qGram : q_gram_list) {
             count = qGramCountMap.getOrDefault(qGram, 0);
-            qGram = qGram + (count + 1);
+            qGramCntList.add(qGram + (count + 1));
             qGramCountMap.put(qGram, count + 1);
         }
+        return qGramCntList;
     }
 
 
@@ -111,7 +113,7 @@ class CLKBFEncoding extends Encoding {
     public BitSet clk_encode(List<String> q_gram_list) {
         BitSet clk_bf;
 
-        if (appendCntFlag) add_count_2_q_gram(q_gram_list);
+        if (appendCntFlag) q_gram_list = add_count_2_q_gram(q_gram_list);
 
         clk_bf = this.hash_method.hash_q_gram_list(q_gram_list);
 
@@ -131,7 +133,7 @@ class CLKBFEncoding extends Encoding {
 //            q_gram_list_mc.extend([attr_val[i:i + this.q] for i in range(attr_val_len - padded_num)])
 //            extra_q_gram_set = mc_harden_class.get_other_q_grams_from_lang_model(q_gram_list_mc)
 //            q_gram_list.extend(extra_q_gram_set)
-        if (appendCntFlag) add_count_2_q_gram(q_gram_list);
+        if (appendCntFlag) q_gram_list = add_count_2_q_gram(q_gram_list);
 
         clk_bf = this.hash_method.hash_q_gram_list(q_gram_list);
 
@@ -213,7 +215,7 @@ class RecordBFEncoding extends Encoding {
 
             q_gram_list = qGramListForAttr(rec_attr_val_list.get(i), q, padded);
 
-            if (deal_dup) add_count_2_q_gram(q_gram_list);
+            if (deal_dup) q_gram_list = add_count_2_q_gram(q_gram_list);
 
             attr_bf = hash_method.hash_q_gram_list(q_gram_list);
 
@@ -249,7 +251,7 @@ class RecordBFEncoding extends Encoding {
                 qGram = qGram + salt;
             }
 
-            if (deal_dup) add_count_2_q_gram(q_gram_list);
+            if (deal_dup) q_gram_list = add_count_2_q_gram(q_gram_list);
 
             attr_bf = hash_method.hash_q_gram_list(q_gram_list);
 

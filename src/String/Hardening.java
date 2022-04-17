@@ -18,8 +18,8 @@ public class Hardening {
     public BitSet harden_bf(BitSet bf) {
         return null;
     }
-    public void set_non_secret_index_list() {}
-    public void set_indexGroup_list(){}
+    public void set_non_secret_index_list(String bitFreqFilePath) {}
+    public void set_indexGroup_list(String bitFreqFilePath){}
 }
 
 class Balancing extends Hardening {
@@ -220,10 +220,8 @@ class Urap extends Hardening {
     }
 
     @Override
-    public void set_non_secret_index_list() {
-        File file = new File(this.dataset_file);
-        String file_path = file.getParent();
-        String freq_file = file_path + String.format("/20210101_freq/%s-%s-%d-%s-%s.csv",
+    public void set_non_secret_index_list(String bitFreqFilePath) {
+        String freq_file = bitFreqFilePath + String.format("%s-%s-%d-%s-%s.csv",
                 encode_type.toLowerCase(Locale.ROOT), hash_type, q,
                 String.valueOf(padded).toLowerCase(Locale.ROOT), num_hash_function);
         try (FileReader fr = new FileReader(freq_file);
@@ -306,7 +304,6 @@ class UrapProb extends Urap {
         super(type, non_secret_ratio, 0.0, dataset_file, encode_type, hash_type, q, padded, num_hash_function, bf_len);
         this.flip_prob_secret = prob_secret;
         this.flip_prob_non_secret = prob_non_secret;
-        set_non_secret_index_list();
     }
 
     @Override
@@ -359,10 +356,8 @@ class IndexD extends Urap {
     }
 
     @Override
-    public void set_indexGroup_list() {
-        File file = new File(this.dataset_file);
-        String file_path = file.getParent();
-        String freq_file = file_path + String.format("/20210101_freq/%s-%s-%d-%s-%s.csv",
+    public void set_indexGroup_list(String bitFreqFilePath) {
+        String freq_file = bitFreqFilePath + String.format("%s-%s-%d-%s-%s.csv",
                 encode_type.toLowerCase(Locale.ROOT), hash_type, q,
                 String.valueOf(padded).toLowerCase(Locale.ROOT), num_hash_function);
         try (FileReader fr = new FileReader(freq_file);
