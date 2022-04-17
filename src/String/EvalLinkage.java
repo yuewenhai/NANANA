@@ -432,7 +432,7 @@ public class EvalLinkage {
                 // To save memory convert into a MD5 hashes
                 //
                 assert messageDigest != null;
-                messageDigest.update(list2String(band_hash_sig).getBytes());
+                messageDigest.update(intList2String(band_hash_sig).getBytes());
                 byte[] bytes = messageDigest.digest();
                 String block_key_val = new BigInteger(1, bytes).toString(16);
                 // block_key_val = str(band_hash_sig)
@@ -547,95 +547,6 @@ public class EvalLinkage {
         System.out.printf("    %d blocks larger than %d records%n", num_large_block_del, MAX_BLOCK_SIZE);
         if (block_size_list.size() == 0) {
             System.out.println("    Warning: No blocks left");
-        }
-    }
-
-    // statistic Duplicated QGram
-    public void statisticDupQGram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q){
-        List<Integer> qgramListSizes = new ArrayList<>();
-        List<Integer> diffs = new ArrayList<>();
-        int qgramListSize;
-        List<String> qgramList;
-        for (String entityID : rec_q_gram_dict.keySet()){
-            qgramList = rec_q_gram_dict.get(entityID);
-            qgramListSize = qgramList.size();
-            qgramListSizes.add(qgramListSize);
-
-            Set<String> tempSet = new HashSet<>(qgramList);
-            diffs.add(qgramListSize - tempSet.size());
-        }
-        File dataSetFile = new File(dataset);
-        File filePath = new File(dataSetFile.getParent() + "/statisticDupQGram/");
-        if (!filePath.exists()) {
-            if (!filePath.mkdirs()) {
-                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
-                return;
-            }
-        }
-        String filename = filePath.toString() + String.format("/DuplicatedQGram-q%d.csv", q);
-        File file = new File(filename);
-        try (FileWriter fw = new FileWriter(file, false);
-             BufferedWriter bw = new BufferedWriter(fw)) {
-            if (!file.exists()) {
-                if (!file.createNewFile()) {
-                    System.out.printf("创建文件%s失败\n", filename);
-                    return;
-                }
-            }
-
-            String line = "QGramListSize,numDup";
-            bw.write(line + "\n");
-            for (int i = 0; i < qgramListSizes.size(); i++) {
-                line = qgramListSizes.get(i) + "," + diffs.get(i);
-                bw.write(line + "\n");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // statistic every bit vector size / qgram list size
-    public void statisticBDQ(String dataset, Map<String, List<String>> rec_q_gram_dict,
-                             Map<String, BitSet> rec_bf_dict, String hashType, boolean appendFlag,
-                             String numOfHashfuncs){
-        List<Integer> qgramListSizes = new ArrayList<>();
-        List<Integer> bitSetSizes = new ArrayList<>();
-        List<Double> divisions = new ArrayList<>();
-        for (String entityID : rec_q_gram_dict.keySet()){
-            int qgramSize = rec_q_gram_dict.get(entityID).size();
-            int bitSetSize = rec_bf_dict.get(entityID).cardinality();
-            qgramListSizes.add(qgramSize);
-            bitSetSizes.add(bitSetSize);
-            if (qgramSize == 0) continue;
-            divisions.add((double) bitSetSize / qgramSize);
-        }
-        File dataSetFile = new File(dataset);
-        File filePath = new File(dataSetFile.getParent() + "/statisticBDQ");
-        if (!filePath.exists()) {
-            if (!filePath.mkdirs()) {
-                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
-                return;
-            }
-        }
-        String filename = filePath.toString() + String.format("/BDQ%s-%s-k%s.csv", hashType, appendFlag, numOfHashfuncs);
-        File file = new File(filename);
-        try (FileWriter fw = new FileWriter(file, false);
-             BufferedWriter bw = new BufferedWriter(fw)) {
-            if (!file.exists()) {
-                if (!file.createNewFile()) {
-                    System.out.printf("创建文件%s失败\n", filename);
-                    return;
-                }
-            }
-
-            String line = "BitVectorSize,QGramListSize,division";
-            bw.write(line + "\n");
-            for (int i = 0; i < qgramListSizes.size(); i++) {
-                line = bitSetSizes.get(i) + "," + qgramListSizes.get(i) + "," + divisions.get(i);
-                bw.write(line + "\n");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
@@ -921,12 +832,109 @@ public class EvalLinkage {
         return (int) (Math.round(Math.log(2.0) * bf_len / avrg_num_q_gram));
     }
 
-    public String list2String(List<Integer> list) {
+    public String intList2String(List<Integer> list) {
         StringBuilder stringBuilder = new StringBuilder();
         for (int item : list) {
             stringBuilder.append(item).append(',');
         }
         return stringBuilder.toString();
+    }
+
+    public String strList2String(List<String> list) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (String item : list) {
+            stringBuilder.append(item).append(',');
+        }
+        return stringBuilder.toString();
+    }
+
+    // statistic Duplicated QGram
+    public void statisticDupQGram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q, boolean padded){
+        List<Integer> qgramListSizes = new ArrayList<>();
+        List<Integer> diffs = new ArrayList<>();
+        int qgramListSize;
+        List<String> qgramList;
+        for (String entityID : rec_q_gram_dict.keySet()){
+            qgramList = rec_q_gram_dict.get(entityID);
+            qgramListSize = qgramList.size();
+            qgramListSizes.add(qgramListSize);
+
+            Set<String> tempSet = new HashSet<>(qgramList);
+            diffs.add(qgramListSize - tempSet.size());
+        }
+        File dataSetFile = new File(dataset);
+        File filePath = new File(dataSetFile.getParent() + "/statisticDupQGram/");
+        if (!filePath.exists()) {
+            if (!filePath.mkdirs()) {
+                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
+                return;
+            }
+        }
+        String filename = filePath.toString() + String.format("/DuplicatedQGram-q%d-padded%s.csv", q, padded);
+        File file = new File(filename);
+        try (FileWriter fw = new FileWriter(file, false);
+             BufferedWriter bw = new BufferedWriter(fw)) {
+            if (!file.exists()) {
+                if (!file.createNewFile()) {
+                    System.out.printf("创建文件%s失败\n", filename);
+                    return;
+                }
+            }
+
+            String line = "QGramListSize,numDup";
+            bw.write(line + "\n");
+            for (int i = 0; i < qgramListSizes.size(); i++) {
+                line = qgramListSizes.get(i) + "," + diffs.get(i);
+                bw.write(line + "\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // statistic every bit vector size / qgram list size
+    public void statisticBDQ(String dataset, Map<String, List<String>> rec_q_gram_dict,
+                             Map<String, BitSet> rec_bf_dict, String hashType, boolean appendFlag,
+                             String numOfHashfuncs){
+        List<Integer> qgramListSizes = new ArrayList<>();
+        List<Integer> bitSetSizes = new ArrayList<>();
+        List<Double> divisions = new ArrayList<>();
+        for (String entityID : rec_q_gram_dict.keySet()){
+            int qgramSize = rec_q_gram_dict.get(entityID).size();
+            int bitSetSize = rec_bf_dict.get(entityID).cardinality();
+            qgramListSizes.add(qgramSize);
+            bitSetSizes.add(bitSetSize);
+            if (qgramSize == 0) continue;
+            divisions.add((double) bitSetSize / qgramSize);
+        }
+        File dataSetFile = new File(dataset);
+        File filePath = new File(dataSetFile.getParent() + "/statisticBDQ");
+        if (!filePath.exists()) {
+            if (!filePath.mkdirs()) {
+                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
+                return;
+            }
+        }
+        String filename = filePath.toString() + String.format("/BDQ%s-%s-k%s.csv", hashType, appendFlag, numOfHashfuncs);
+        File file = new File(filename);
+        try (FileWriter fw = new FileWriter(file, false);
+             BufferedWriter bw = new BufferedWriter(fw)) {
+            if (!file.exists()) {
+                if (!file.createNewFile()) {
+                    System.out.printf("创建文件%s失败\n", filename);
+                    return;
+                }
+            }
+
+            String line = "BitVectorSize,QGramListSize,division";
+            bw.write(line + "\n");
+            for (int i = 0; i < qgramListSizes.size(); i++) {
+                line = bitSetSizes.get(i) + "," + qgramListSizes.get(i) + "," + divisions.get(i);
+                bw.write(line + "\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void storeResult(String filename, List<Double> precisions, List<Double> recalls) {
@@ -953,6 +961,99 @@ public class EvalLinkage {
             for (int i = 0; i < precisions.size(); i++) {
                 line = precisions.get(i) + "," + recalls.get(i);
                 bw.write(line + "\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void storeQgram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q, boolean padded){
+        File dataSetFile = new File(dataset);
+        File filePath = new File(dataSetFile.getParent() + "/storeQgram/");
+        if (!filePath.exists()) {
+            if (!filePath.mkdirs()) {
+                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
+                return;
+            }
+        }
+        String filename = filePath.toString() + String.format("/QGram-q%d-padded%s.csv", q, padded);
+        File file = new File(filename);
+        try (FileWriter fw = new FileWriter(file, false);
+             BufferedWriter bw = new BufferedWriter(fw)) {
+            if (!file.exists()) {
+                if (!file.createNewFile()) {
+                    System.out.printf("创建文件%s失败\n", filename);
+                    return;
+                }
+            }
+
+            String line = "ID:QGram"; // ',' 容易其冲突
+            bw.write(line + "\n");
+            for (String entityID : rec_q_gram_dict.keySet()){
+                List<String> list = rec_q_gram_dict.get(entityID);
+                bw.write(String.format("%s:%s", entityID, strList2String(list)));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void storeBF(String dataset, Map<String, BitSet> rec_bf_dict, String encode_type, String hash_type, String harden_type, String num_hash_functions, int bf_len) {
+        File dataSetFile = new File(dataset);
+        File filePath = new File(dataSetFile.getParent() + "/storeBF/");
+        if (!filePath.exists()) {
+            if (!filePath.mkdirs()) {
+                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
+                return;
+            }
+        }
+        String filename = filePath.toString() + String.format("/BF-encode%s-hash%s-harden%s-k%s-bfLen%d.csv", encode_type, hash_type, harden_type, num_hash_functions, bf_len);
+        File file = new File(filename);
+        try (FileWriter fw = new FileWriter(file, false);
+             BufferedWriter bw = new BufferedWriter(fw)) {
+            if (!file.exists()) {
+                if (!file.createNewFile()) {
+                    System.out.printf("创建文件%s失败\n", filename);
+                    return;
+                }
+            }
+
+            String line = "ID:BF";
+            bw.write(line + "\n");
+            for (String entityID : rec_bf_dict.keySet()){
+                BitSet bitSet = rec_bf_dict.get(entityID);
+                bw.write(String.format("%s:%s", entityID, bitSet.toString()));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void storeBFPair(String dataset, Map<String[], Double> bf_rec_pair_dict, String encode_type, String hash_type, String harden_type, String num_hash_functions, int bf_len) {
+        File dataSetFile = new File(dataset);
+        File filePath = new File(dataSetFile.getParent() + "/storeBFPair/");
+        if (!filePath.exists()) {
+            if (!filePath.mkdirs()) {
+                System.out.printf("创建文件夹%s失败\n", filePath.getPath());
+                return;
+            }
+        }
+        String filename = filePath.toString() + String.format("/BFPair-encode%s-hash%s-harden%s-k%s-bfLen%d.csv", encode_type, hash_type, harden_type, num_hash_functions, bf_len);
+        File file = new File(filename);
+        try (FileWriter fw = new FileWriter(file, false);
+             BufferedWriter bw = new BufferedWriter(fw)) {
+            if (!file.exists()) {
+                if (!file.createNewFile()) {
+                    System.out.printf("创建文件%s失败\n", filename);
+                    return;
+                }
+            }
+
+            String line = "IDPair:Sim";
+            bw.write(line + "\n");
+            for (String[] entityIDPair : bf_rec_pair_dict.keySet()){
+                double sim = bf_rec_pair_dict.get(entityIDPair);
+                bw.write(String.format("%s:%.4f", strList2String(Arrays.stream(entityIDPair).toList()), sim));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1104,12 +1205,12 @@ public class EvalLinkage {
                     // dictionary for data set1
                     //
                     rec_q_gram_dict1 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict1);
-                    evalLinkage.statisticDupQGram(data_set_file_name1, rec_q_gram_dict1, q);
+                    evalLinkage.statisticDupQGram(data_set_file_name1, rec_q_gram_dict1, q, padded);
                     // Generate q-grams for the attribute value lists and add into a
                     // dictionary for data set2
                     //
                     rec_q_gram_dict2 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict2);
-                    evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q);
+                    evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q, padded);
 
                     // Set num of hash functions
                     if (num_hash_functions.equals("opt")) {
@@ -1165,12 +1266,16 @@ public class EvalLinkage {
                     rec_bf_dict1 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict1, bf_harden_type, bf_len);
                     rec_bf_dict2 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict2, bf_harden_type, bf_len);
                 }
+                evalLinkage.storeBF(data_set_file_name1, rec_bf_dict1, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
+                evalLinkage.storeBF(data_set_file_name2, rec_bf_dict2, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
 
                 if (bf_harden_type == "none"){
                     evalLinkage.statisticBDQ(data_set_file_name1, rec_q_gram_dict1, rec_bf_dict1, hash_type,
                             appendCntFlag, num_hash_functions);
                     evalLinkage.statisticBDQ(data_set_file_name2, rec_q_gram_dict2, rec_bf_dict2, hash_type,
                             appendCntFlag, num_hash_functions);
+                    evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded);
+                    evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded);
                 }
 
                 System.out.printf("Time used for generating bf dict:         %d msec%n", new Date().getTime() - start_time);
@@ -1242,6 +1347,7 @@ public class EvalLinkage {
                 assert block_dict2 != null;
                 Map<String[], Double> bf_rec_pair_dict = evalLinkage.conduct_bf_linkage(rec_bf_dict1, block_dict1,
                         rec_bf_dict2, block_dict2, min_sim);
+                evalLinkage.storeBFPair(data_set_file_name1, bf_rec_pair_dict, encode_type, hash_type, bf_harden_type, num_hash_functions, bf_len);
 
                 long bf_linkage_time = new Date().getTime() - start_time;
                 Map<Double, int[]> bf_class_res_dict = evalLinkage.calc_linkage_outcomes(bf_rec_pair_dict, sim_threshold_list);
