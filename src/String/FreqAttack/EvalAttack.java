@@ -480,9 +480,11 @@ public class EvalAttack {
             String bf = bfs.get(entityID);
             Set<List<String>> G = new HashSet<>();
             for (List<String> recAttrs : GN) {
-                List<String> posTemp = BG.get(recAttrs);
-                posTemp.removeAll(Arrays.asList(bf.split("  ")));
-                if (posTemp.size() == 0) G.add(recAttrs);
+                if (BG.containsKey(recAttrs)){
+                    List<String> posTemp = BG.get(recAttrs);
+                    posTemp.removeAll(Arrays.asList(bf.split("  ")));
+                    if (posTemp.size() == 0) G.add(recAttrs);
+                }
             }
             R.put(entityID, G);
         }
@@ -544,12 +546,29 @@ public class EvalAttack {
         int entity_id_col = 0;
 
         EvalLinkage evalLinkage = new EvalLinkage(null, null, null);
+
+        Date time = new Date();
+        long startTime;
+        long endTime;
+
         List<Map> result = evalLinkage.load_dataset_salt(attrFile, attr_index_list, entity_id_col, -1);
         Map<String, List<String>> rec_attr_val_dict = result.get(0);
+
+        System.out.println("Generate qgrams for records");
+        startTime = time.getTime();
         Map<List<String>, List<String>> recAttr2Qgrams = evalAttack.getQgramsForRec(rec_attr_val_dict);
+        endTime = time.getTime();
+        System.out.printf(" generate qgrams for record cost time: %d msec\n", endTime - startTime);
+
+        System.out.println("Sort record attributes");
+        startTime = time.getTime();
         List<List<String[]>> attrRes = evalAttack.sortAttrs(rec_attr_val_dict, freqT);
         List<String[]> sortedFreqAttrs = attrRes.get(0);
         List<String[]> nonFreqAttrs = attrRes.get(1);
+        endTime = time.getTime();
+        System.out.printf(" freq records size: %d / non freq records size: %d\n", sortedFreqAttrs.size(), nonFreqAttrs.size());
+        System.out.printf(" sort record attributes cost time: %d msec\n", endTime - startTime);
+
         String[] hash_type_list = new String[]{"dh-false", "dh-true", "rh-false", "rh-true"};
         String[] num_hash_functions_list = {"10", "20", "30"};
         String[] encode_type_list = {"clk"};
@@ -626,11 +645,26 @@ public class EvalAttack {
             for (String encodeType : encode_type_list) {
                 for (String hardenType : bf_harden_types) {
                     for (String numHashFunctions : num_hash_functions_list) {
+                        System.out.printf("Re-identify bf encode:%s hash:%s harden:%s k:%s\n", encodeType, hashType,
+                                hardenType, numHashFunctions);
                         evalAttack.k = Integer.parseInt(numHashFunctions);
+                        System.out.println("    Load bf file");
+                        startTime = time.getTime();
                         bfs = evalAttack.loadBFs(bfFilePath, datasetName, encodeType, hashType, hardenType, numHashFunctions);
+                        endTime = time.getTime();
+                        System.out.printf("      load bf file cost time: %d msec\n", endTime - startTime);
+
+                        System.out.println("    Sort Bloom Filters");
+                        startTime = time.getTime();
                         List<List<String[]>> bfsRes = evalAttack.sortBFs(bfs, freqT);
                         List<String[]> sortedFreqBfs = bfsRes.get(0);
                         List<String[]> nonFreqBfs = bfsRes.get(1);
+                        endTime = time.getTime();
+                        System.out.printf("      freq bfs size: %d / non freq bfs size: %d\n", sortedFreqBfs.size(),
+                                nonFreqBfs.size());
+                        System.out.printf("      sort bfs cost time: %d msec\n", endTime - startTime);
+
+                        System.out.println("    Generate Bloom Filter and Record Pair by freq");
                         Map<List<String>, List<String>> bfAttrPair = new HashMap<>();
                         for (int i = 0; i < Math.min(sortedFreqBfs.size(), sortedFreqAttrs.size()); i++) {
                             String[] bfFreq = sortedFreqBfs.get(i);
@@ -640,19 +674,29 @@ public class EvalAttack {
                             bfAttrPair.put(Arrays.asList(bfPositions), Arrays.asList(attrs));
                         }
 
+                        System.out.println("    Generate basic candidates(possible, no possible, assign)");
+                        startTime = time.getTime();
                         Map<String, Set<String>> candiProbB = new HashMap<>();
                         Map<String, Set<String>> candiNoProbB = new HashMap<>();
                         evalAttack.getCandidateB(bfAttrPair, candiProbB, candiNoProbB, recAttr2Qgrams);
-
                         Map<String, Set<String>> candiAssignB = new HashMap<>();
                         evalAttack.getQgramPosAssign(bfAttrPair, candiProbB, candiAssignB, recAttr2Qgrams);
+                        endTime = time.getTime();
+                        System.out.printf("      generate basic candidates(possible, no possible, assign) cost time: %d msec\n",
+                                endTime - startTime);
 
+                        System.out.println("    Generate refined and expended candidates(possible, no possible, assign)");
+                        startTime = time.getTime();
                         Map<String, Set<String>> candiProbR = new HashMap<>();
                         Map<String, Set<String>> candiNoProbR = new HashMap<>();
                         Map<String, Set<String>> candiAssignR = new HashMap<>();
                         evalAttack.qgramRefineAndExpend(bfAttrPair, sortedFreqBfs, sortedFreqAttrs, nonFreqBfs,
                                 nonFreqAttrs, candiProbR, candiNoProbR, candiAssignR, recAttr2Qgrams);
+                        endTime = time.getTime();
+                        System.out.printf("      generate refined and expended candidates(possible, no possible, assign) cost time: %d msec\n",
+                                endTime - startTime);
 
+                        System.out.println("    Generate merged candidates(possible, no possible, assign)");
                         Map<String, Set<String>> candiProbM = new HashMap<>();
                         Map<String, Set<String>> candiNoProbM = new HashMap<>();
                         Map<String, Set<String>> candiAssignM = new HashMap<>();
@@ -676,24 +720,51 @@ public class EvalAttack {
                             candiAssignM.put(pos, set3);
                         }
 
+                        System.out.println("    Generate GN and GP");
+                        startTime = time.getTime();
                         Set<List<String>> GN = new HashSet<>();
                         Set<List<String>> GP = new HashSet<>();
                         evalAttack.getGNOrGP(rec_attr_val_dict, candiNoProbM, GN, recAttr2Qgrams);
                         evalAttack.getGNOrGP(rec_attr_val_dict, candiProbM, GP, recAttr2Qgrams);
+                        endTime = time.getTime();
+                        System.out.printf("      generate GN and GP cost time: %d msec\n", endTime - startTime);
+
+                        System.out.println("    Re-identify on possible candidates");
+                        startTime = time.getTime();
                         Map<String, Set<List<String>>> ROnProb = evalAttack.identifyOnProb(bfs, candiProbM, GP, recAttr2Qgrams);
+                        endTime = time.getTime();
+                        System.out.printf("      re-identify on possible candidates cost time: %d msec\n", endTime - startTime);
+
+                        System.out.println("    Re-identify on no possible candidates");
+                        startTime = time.getTime();
                         Map<String, Set<List<String>>> ROnNoProb = evalAttack.identifyOnNoProb(bfs, candiNoProbM, GN, recAttr2Qgrams);
+                        endTime = time.getTime();
+                        System.out.printf("      re-identify on no possible candidates cost time: %d msec\n", endTime - startTime);
 
-
-                        String method = String.format("BF-%s-encode%s-hash%s-harden%s-k%s-bfLen%d", datasetName,
+                        String method = String.format("%s-encode%s-hash%s-harden%s-k%s-bfLen%d", datasetName,
                                 encodeType, hashType, hardenType, numHashFunctions, evalAttack.bfLen);
-                        storeProbResult.put(method, evalAttack.statistic(rec_attr_val_dict, ROnProb));
-                        storeNoProbResult.put(method, evalAttack.statistic(rec_attr_val_dict, ROnNoProb));
+                        startTime = time.getTime();
+                        List<Integer> resultProb = evalAttack.statistic(rec_attr_val_dict, ROnProb);
+                        storeProbResult.put(method, resultProb);
+
+
+                        List<Integer> resultNoProb = evalAttack.statistic(rec_attr_val_dict, ROnNoProb);
+                        storeNoProbResult.put(method, resultNoProb);
+                        endTime = time.getTime();
+                        System.out.printf("    Re-identify on possible candidates result: 1-1:%d 1-m:%d w:%d\n",
+                                resultProb.get(0), resultProb.get(1), resultProb.get(2));
+                        System.out.printf("    Re-identify on no possible candidates result: 1-1:%d 1-m:%d w:%d\n",
+                                resultNoProb.get(0), resultNoProb.get(1), resultNoProb.get(2));
+                        System.out.printf("  Re-identify bf encode:%s hash:%s harden:%s k:%s cost time: %d msec\n\n", encodeType, hashType,
+                                hardenType, numHashFunctions, endTime - startTime);
                     }
                 }
             }
         }
         evalAttack.storeResult2File(storeProbFile, storeProbResult);
+        System.out.printf("Store result on possible candidates in %s, result size: %d\n", storeProbFile, storeProbResult.size());
         evalAttack.storeResult2File(storeNoProbFile, storeNoProbResult);
+        System.out.printf("Store result on no possible candidates in %s, result size: %d\n", storeNoProbFile, storeProbResult.size());
     }
 
     public List<Integer> statistic(Map<String, List<String>> recAttrsDict, Map<String, Set<List<String>>> R) {
