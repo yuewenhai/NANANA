@@ -863,7 +863,7 @@ public class EvalLinkage {
         return (int) (Math.round(Math.log(2.0) * bf_len / avrg_num_q_gram));
     }
 
-    public String intList2String(List<Integer> list) {
+    public static String intList2String(List<Integer> list) {
         StringBuilder stringBuilder = new StringBuilder();
         for (int item : list) {
             stringBuilder.append(item).append(',');
@@ -871,7 +871,7 @@ public class EvalLinkage {
         return stringBuilder.toString();
     }
 
-    public String strList2String(List<String> list) {
+    public static String strList2String(List<String> list) {
         StringBuilder stringBuilder = new StringBuilder();
         for (String item : list) {
             stringBuilder.append(item).append(',');
