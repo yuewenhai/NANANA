@@ -183,11 +183,8 @@ public class EvalAttack {
                     for (int pos = 0; pos < bfLen; pos++) {
                         if (bfPositions.get(pos)) {
                             Set<String> candiProb = candiProbB.getOrDefault(pos, new HashSet<>());
-                            Set<String> jointQgrams = new HashSet<>();
-                            for (String qgram : qgrams) {
-                                if (candiProb.add(qgram)) jointQgrams.add(qgram);
-                                if (jointQgrams.size() > 1) break;
-                            }
+                            Set<String> jointQgrams = new HashSet<>(qgrams);
+                            jointQgrams.retainAll(candiProb);
                             if (jointQgrams.size() == 1) {
                                 synchronized (candiAssignB) {
                                     Set<String> candiAssign = candiAssignB.getOrDefault(pos, new HashSet<>());
@@ -211,10 +208,8 @@ public class EvalAttack {
     public void qgramRefineAndExpend(Map<BitSet, List<String>> bfAttrPair, List<BitSet> sortedFreqBfs,
                                      List<String[]> sortedFreqAttrs, List<BitSet> nonFreqBfs, List<String[]> nonFreqAttrs,
                                      Map<Integer, Set<String>> candiProbR, Map<Integer, Set<String>> candiNoProbR,
-                                     Map<Integer, Set<String>> candiAssignR, Map<List<String>, List<String>> recAttrs2Qgrams) {
-
-        int m = Math.max(sortedFreqBfs.size() + nonFreqBfs.size(), sortedFreqAttrs.size() + nonFreqAttrs.size());
-
+                                     Map<Integer, Set<String>> candiAssignR, Map<List<String>, List<String>> recAttrs2Qgrams,
+                                     int maxSize) {
         int totalPairs = bfAttrPair.keySet().size();
         int threadNum = Runtime.getRuntime().availableProcessors() + 1;
         int num_entity_per_thread = totalPairs / threadNum + 1;
@@ -226,6 +221,9 @@ public class EvalAttack {
             threadPool.execute(() -> {
                 for (int j = start; j < end; j++) {
                     BitSet bf = bfAttrPairKeyList.get(j);
+                    List<String> attr = bfAttrPair.get(bf);
+                    List<String> qgrams = recAttrs2Qgrams.get(attr);
+
                     List<BitSet> BiS = new ArrayList<>();
                     List<BitSet> BiL = new ArrayList<>();
                     List<List<String>> ViS = new ArrayList<>();
@@ -238,8 +236,6 @@ public class EvalAttack {
                         if (nonFreqBFTemp.equals(nonFreqBF) && nonFreqBF.cardinality() < bf.cardinality()) BiS.add(nonFreqBF);
                     }
 
-                    List<String> attr = bfAttrPair.get(bf);
-                    List<String> qgrams = recAttrs2Qgrams.get(attr);
                     for (String[] nonFreqAttr : nonFreqAttrs) {
                         String nonFreqAttrStr = nonFreqAttr[0];
                         List<String> nonFreqAttrList = Arrays.asList(nonFreqAttrStr.split(","));
@@ -248,7 +244,7 @@ public class EvalAttack {
                         if (qgrams.containsAll(nonFreqQgrams)) ViS.add(nonFreqAttrList);
                     }
 
-                    if (ViS.size() <= m && ViS.size() > 0 && BiS.size() > 0 && BiS.size() <= m) {
+                    if (ViS.size() <= maxSize && ViS.size() > 0 && BiS.size() > 0 && BiS.size() <= maxSize) {
                         Set<String> qgramsU = new HashSet<>();
                         for (List<String> attrTemp : ViS) {
                             qgramsU.addAll(recAttrs2Qgrams.get(attrTemp));
@@ -256,9 +252,7 @@ public class EvalAttack {
                         Set<String> qgramsD = new HashSet<>(qgrams);
                         qgramsD.removeAll(qgramsU);
                         BitSet bfO = new BitSet(bfLen);
-                        for (BitSet bfTemp : BiS) {
-                            bfO.or(bfTemp);
-                        }
+                        for (BitSet bfTemp : BiS) bfO.or(bfTemp);
                         if (qgramsD.size() > 0 && !bfO.equals(bf)) {
                             for (int pos = 0; pos < bfLen; pos++) {
                                 if (!bfO.get(pos) && bf.get(pos)) {
@@ -285,24 +279,22 @@ public class EvalAttack {
                         }
                     }
 
-                    if (ViL.size() <= m && ViL.size() > 0 && BiL.size() > 0 && BiL.size() <= m) {
+                    if (ViL.size() <= maxSize && ViL.size() > 0 && BiL.size() > 0 && BiL.size() <= maxSize) {
                         Set<String> qgramsU = new HashSet<>();
+                        Set<String> qgramsS = new HashSet<>();
+                        int times = 0;
                         for (List<String> attrTemp : ViL) {
                             qgramsU.addAll(recAttrs2Qgrams.get(attrTemp));
-                        }
-                        Set<String> qgramsS = new HashSet<>();
-                        for (List<String> attrTemp : ViL) {
-                            if (qgramsS.size() == 0) qgramsS.addAll(recAttrs2Qgrams.get(attrTemp));
+                            if (times == 0) qgramsS.addAll(recAttrs2Qgrams.get(attrTemp));
                             else qgramsS.retainAll(recAttrs2Qgrams.get(attrTemp));
+                            times++;
                         }
                         Set<String> qgramsD = new HashSet<>(qgramsS);
                         qgrams.forEach(qgramsD::remove);
                         BitSet bfO = new BitSet(bfLen);
-                        for (BitSet bfTemp : BiL) {
-                            bfO.or(bfTemp);
-                        }
                         BitSet bfA = new BitSet(bfLen);
                         for (BitSet bfTemp : BiL) {
+                            bfO.or(bfTemp);
                             bfA.and(bfTemp);
                         }
                         if (qgramsD.size() > 0 && !bfA.equals(bf)) {
@@ -313,7 +305,6 @@ public class EvalAttack {
                                         set1.addAll(qgramsD);
                                         candiProbR.put(pos, set1);
                                     }
-
                                     if (ViL.size() == 1 && BiL.size() == 1 && qgramsD.size() == 1) {
                                         synchronized (candiAssignR) {
                                             Set<String> set3 = candiAssignR.getOrDefault(pos, new HashSet<>());
@@ -342,35 +333,31 @@ public class EvalAttack {
         }
     }
 
-    public void getGNOrGP(Map<String, List<String>> attrs, Map<Integer, Set<String>> candiM, Set<List<String>> GNorGP,
+    public void getGNOrGP(Map<Integer, Set<String>> candiM, Set<List<String>> GNorGP,
                           Map<List<String>, List<String>> recAttrs2Qgrams) {
-        Set<String> QN = new HashSet<>();
+        Set<String> QNorQP = new HashSet<>();
         for (int pos : candiM.keySet()) {
-            if (candiM.containsKey(pos)) QN.addAll(candiM.get(pos));
+            QNorQP.addAll(candiM.get(pos));
         }
 
-        Map<List<String>, List<String>> recAttr2Qgrams = new HashMap<>();
-        for (List<String> recAttrs : attrs.values()) {
-            recAttr2Qgrams.put(recAttrs, recAttrs2Qgrams.get(recAttrs));
-        }
-
-        int totalPairs = recAttr2Qgrams.keySet().size();
+        int totalPairs = recAttrs2Qgrams.keySet().size();
         int threadNum = Runtime.getRuntime().availableProcessors() + 1;
         int num_entity_per_thread = totalPairs / threadNum + 1;
         CountDownLatch countDownLatch = new CountDownLatch(threadNum); // execute all the threads, then continue
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, totalPairs);
-            List<List<String>> recAttr2QgramsKeyList = recAttr2Qgrams.keySet().stream().toList();
+            List<List<String>> recAttr2QgramsKeyList = recAttrs2Qgrams.keySet().stream().toList();
             threadPool.execute(() -> {
                 for (int j = start; j < end; j++) {
                     List<String> recAttrs = recAttr2QgramsKeyList.get(j);
-                    List<String> listTemp = recAttr2Qgrams.get(recAttrs);
-                    for (String qgram : QN) {
-                        if (listTemp.contains(qgram)) {
+                    List<String> qgrams = recAttrs2Qgrams.get(recAttrs);
+                    for (String qgram : qgrams) {
+                        if (QNorQP.contains(qgram)) {
                             synchronized (GNorGP) {
                                 GNorGP.add(recAttrs);
                             }
+                            break;
                         }
                     }
                 }
@@ -407,8 +394,15 @@ public class EvalAttack {
                             for (int p = 0; p < G.size(); p++) {
                                 List<String> recAttrs = G.get(p);
                                 List<String> qgrams = recAttrs2Qgrams.get(recAttrs);
-                                if (!qgrams.containsAll(qp)) {
-                                    G.remove(p);
+                                int cnt = 0;
+                                for (String qgram : qp){
+                                    if (qgrams.contains(qgram)) {
+                                        cnt++;
+                                        break;
+                                    }
+                                }
+                                if (cnt == 0) {
+                                    G.remove(recAttrs);
                                     p--;
                                 }
                             }
@@ -434,7 +428,7 @@ public class EvalAttack {
                                                            Set<List<String>> GN, Map<List<String>, List<String>> recAttrs2Qgrams) {
         Set<String> QN = new HashSet<>();
         for (int pos : candiNoProbM.keySet()) {
-            if (candiNoProbM.containsKey(pos)) QN.addAll(candiNoProbM.get(pos));
+            QN.addAll(candiNoProbM.get(pos));
         }
 
         Map<String, BitSet> BQ = new HashMap<>();
@@ -563,10 +557,10 @@ public class EvalAttack {
         EvalAttack evalAttack = new EvalAttack();
         int freqT = 2;
 
-        String attrFile = "D:/dataset/ncvoter/ncvoter-s-50000-1.csv";
-        String storeNoProbFile = "D:/dataset/ncvoter/attackNoProb.csv";
-        String storeProbFile = "D:/dataset/ncvoter/attackProb.csv";
-        String bfFilePath = "D:/dataset/ncvoter/12s1s1/storeBF/";
+        String attrFile = "/Users/takafumikai/dataset/ncvoter/ncvoter-s-50000-1.csv";
+        String storeNoProbFile = "/Users/takafumikai/dataset/ncvoter/attackNoProb.csv";
+        String storeProbFile = "/Users/takafumikai/dataset/ncvoter/attackProb.csv";
+        String bfFilePath = "/Users/takafumikai/dataset/ncvoter/";
         String datasetName = "s-1-1";
         String dateDiff = "none";
         int[] attr_index_list = {1, 2};  // attr's columns used
@@ -654,7 +648,8 @@ public class EvalAttack {
                         Map<Integer, Set<String>> candiNoProbR = new HashMap<>();
                         Map<Integer, Set<String>> candiAssignR = new HashMap<>();
                         evalAttack.qgramRefineAndExpend(bfAttrPair, sortedFreqBfs, sortedFreqAttrs, nonFreqBfs,
-                                nonFreqAttrs, candiProbR, candiNoProbR, candiAssignR, recAttr2Qgrams);
+                                nonFreqAttrs, candiProbR, candiNoProbR, candiAssignR, recAttr2Qgrams,
+                                Math.max(bfs.size(), rec_attr_val_dict.size()));
                         endTime = new Date().getTime();
                         System.out.printf("      generate refined and expended candidates(possible, no possible, assign) cost time: %d msec\n",
                                 endTime - startTime);
@@ -686,8 +681,8 @@ public class EvalAttack {
                         startTime = new Date().getTime();
                         Set<List<String>> GN = new HashSet<>();
                         Set<List<String>> GP = new HashSet<>();
-                        evalAttack.getGNOrGP(rec_attr_val_dict, candiNoProbM, GN, recAttr2Qgrams);
-                        evalAttack.getGNOrGP(rec_attr_val_dict, candiProbM, GP, recAttr2Qgrams);
+                        evalAttack.getGNOrGP(candiNoProbM, GN, recAttr2Qgrams);
+                        evalAttack.getGNOrGP(candiProbM, GP, recAttr2Qgrams);
                         endTime = new Date().getTime();
                         System.out.printf("      generate GN and GP cost time: %d msec\n", endTime - startTime);
 
