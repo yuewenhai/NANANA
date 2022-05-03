@@ -25,23 +25,27 @@ public class EvalAttack {
                 new LinkedBlockingDeque<Runnable>());
     }
 
-    public Map<String, String> loadBFs(String filePath, String datasetName, String encodeType, String hashType,
+    public Map<String, BitSet> loadBFs(String filePath, String datasetName, String encodeType, String hashType,
                                        String hardenType, String numHashFunctions) {
-        int bfLen_ = 1000;
+        bfLen = 1000;
         if (hardenType.equals("xor"))
-            bfLen_ = bfLen * 2;
+            bfLen = bfLen * 2;
         String bfsFile = filePath + String.format("BF-%s-encode%s-hash%s-harden%s-k%s-bfLen%d.csv",
-                datasetName, encodeType, hashType, hardenType, numHashFunctions, bfLen_);
+                datasetName, encodeType, hashType, hardenType, numHashFunctions, bfLen);
 
-        Map<String, String> bfs = new HashMap<>();
+        Map<String, BitSet> bfs = new HashMap<>();
         try (FileReader fr = new FileReader(bfsFile);
              BufferedReader br = new BufferedReader(fr)) {
             br.readLine();
             String line = br.readLine();
             String[] lineArray;
             while (line != null) {
+                BitSet bitSet = new BitSet(bfLen);
                 lineArray = line.replace("\"", "").split(",");
-                bfs.put(lineArray[0], lineArray[1].replace("{", "").replace("}", ""));
+                String[] positions = lineArray[1].replace("{", "").replace("}", "").split("  ");
+                for (String pos : positions)
+                    bitSet.set(Integer.parseInt(pos));
+                bfs.put(lineArray[0], bitSet);
                 line = br.readLine();
             }
             System.out.printf("load bfs from : %s%n", bfsFile);
@@ -51,25 +55,39 @@ public class EvalAttack {
         return bfs;
     }
 
-    public List<List<String[]>> sortBFs(Map<String, String> data, int freqT) {
-        Map<String, Integer> recFreqs = new HashMap<>();
+    public List<List<BitSet>> sortBFs(Map<String, BitSet> data, int freqT) {
+        Map<BitSet, Integer> recFreqs = new HashMap<>();
         for (String entityID : data.keySet()) {
-            String recData = data.get(entityID);
+            BitSet recData = data.get(entityID);
             int freq = recFreqs.getOrDefault(recData, 0);
             freq += 1;
             recFreqs.put(recData, freq);
         }
 
-        List<String[]> recFreqList = new ArrayList<>();
-        List<String[]> recNonFreqList = new ArrayList<>();
-        for (String rec : recFreqs.keySet()) {
+        PriorityQueue<Map<BitSet, Integer>> recFreqQueue = new PriorityQueue<>(
+                new Comparator<Map<BitSet, Integer>>() {
+                    @Override
+                    public int compare(Map<BitSet, Integer> o1, Map<BitSet, Integer> o2) {
+                        return o2.values().iterator().next() - o1.values().iterator().next();
+                    }
+                });
+        List<BitSet> recNonFreqList = new ArrayList<>();
+        for (BitSet rec : recFreqs.keySet()) {
             int freq = recFreqs.get(rec);
-            if (freq >= freqT) recFreqList.add(new String[]{rec, String.valueOf(freq)});
-            else recNonFreqList.add(new String[]{rec, String.valueOf(freq)});
+            if (freq >= freqT) {
+                Map<BitSet, Integer> map = new HashMap<>();
+                map.put(rec, freq);
+                recFreqQueue.add(map);
+            }
+            else recNonFreqList.add(rec);
         }
 
-        recFreqList.sort((o1, o2) -> o2[1].compareTo(o1[1]));
-        List<List<String[]>> res = new ArrayList();
+        List<List<BitSet>> res = new ArrayList();
+        List<BitSet> recFreqList = new ArrayList<>();
+        while (!recFreqQueue.isEmpty()){
+            Map<BitSet, Integer> mapTemp = recFreqQueue.poll();
+            recFreqList.add((BitSet) mapTemp.keySet().toArray()[0]);
+        }
         res.add(recFreqList);
         res.add(recNonFreqList);
         return res;
@@ -99,8 +117,8 @@ public class EvalAttack {
         return res;
     }
 
-    public void getCandidateB(Map<List<String>, List<String>> bfAttrPair,
-                              Map<String, Set<String>> candiProbB, Map<String, Set<String>> candiNoProbB,
+    public void getCandidateB(Map<BitSet, List<String>> bfAttrPair,
+                              Map<Integer, Set<String>> candiProbB, Map<Integer, Set<String>> candiNoProbB,
                               Map<List<String>, List<String>> recAttrs2Qgrams) {
         int totalPairs = bfAttrPair.keySet().size();
         int threadNum = Runtime.getRuntime().availableProcessors() + 1;
@@ -109,15 +127,14 @@ public class EvalAttack {
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, totalPairs);
-            List<List<String>> bfAttrPairKeyList = bfAttrPair.keySet().stream().toList();
+            List<BitSet> bfAttrPairKeyList = bfAttrPair.keySet().stream().toList();
             threadPool.execute(() -> {
                 for (int j = start; j < end; j++) {
-                    List<String> bfPositions = bfAttrPairKeyList.get(j);
+                    BitSet bfPositions = bfAttrPairKeyList.get(j);
                     List<String> attrs = bfAttrPair.get(bfPositions);
                     List<String> qgrams = recAttrs2Qgrams.get(attrs);
-                    for (int k = 0; k < bfLen; k++) {
-                        String pos = String.valueOf(k);
-                        if (bfPositions.contains(pos)) {
+                    for (int pos = 0; pos < bfLen; pos++) {
+                        if (bfPositions.get(pos)) {
                             synchronized (candiProbB) {
                                 Set<String> candiProb = candiProbB.getOrDefault(pos, new HashSet<>());
                                 candiProb.addAll(qgrams);
@@ -141,15 +158,15 @@ public class EvalAttack {
             e.printStackTrace();
         }
 
-        for (String pos : candiProbB.keySet()) {
+        for (Integer pos : candiProbB.keySet()) {
             if (candiNoProbB.containsKey(pos)) {
                 candiProbB.get(pos).removeAll(candiNoProbB.get(pos));
             }
         }
     }
 
-    public void getQgramPosAssign(Map<List<String>, List<String>> bfAttrPair, Map<String, Set<String>> candiProbB,
-                                  Map<String, Set<String>> candiAssignB, Map<List<String>, List<String>> recAttrs2Qgrams) {
+    public void getQgramPosAssign(Map<BitSet, List<String>> bfAttrPair, Map<Integer, Set<String>> candiProbB,
+                                  Map<Integer, Set<String>> candiAssignB, Map<List<String>, List<String>> recAttrs2Qgrams) {
         int totalPairs = bfAttrPair.keySet().size();
         int threadNum = Runtime.getRuntime().availableProcessors() + 1;
         int num_entity_per_thread = totalPairs / threadNum + 1;
@@ -157,15 +174,14 @@ public class EvalAttack {
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, totalPairs);
-            List<List<String>> bfAttrPairKeyList = bfAttrPair.keySet().stream().toList();
+            List<BitSet> bfAttrPairKeyList = bfAttrPair.keySet().stream().toList();
             threadPool.execute(() -> {
                 for (int j = start; j < end; j++) {
-                    List<String> bfPositions = bfAttrPairKeyList.get(j);
+                    BitSet bfPositions = bfAttrPairKeyList.get(j);
                     List<String> attrs = bfAttrPair.get(bfPositions);
                     List<String> qgrams = recAttrs2Qgrams.get(attrs);
-                    for (int k = 0; k < bfLen; k++) {
-                        String pos = String.valueOf(k);
-                        if (bfPositions.contains(pos)) {
+                    for (int pos = 0; pos < bfLen; pos++) {
+                        if (bfPositions.get(pos)) {
                             Set<String> candiProb = candiProbB.getOrDefault(pos, new HashSet<>());
                             Set<String> jointQgrams = new HashSet<>();
                             for (String qgram : qgrams) {
@@ -192,10 +208,10 @@ public class EvalAttack {
         }
     }
 
-    public void qgramRefineAndExpend(Map<List<String>, List<String>> bfAttrPair, List<String[]> sortedFreqBfs,
-                                     List<String[]> sortedFreqAttrs, List<String[]> nonFreqBfs, List<String[]> nonFreqAttrs,
-                                     Map<String, Set<String>> candiProbR, Map<String, Set<String>> candiNoProbR,
-                                     Map<String, Set<String>> candiAssignR, Map<List<String>, List<String>> recAttrs2Qgrams) {
+    public void qgramRefineAndExpend(Map<BitSet, List<String>> bfAttrPair, List<BitSet> sortedFreqBfs,
+                                     List<String[]> sortedFreqAttrs, List<BitSet> nonFreqBfs, List<String[]> nonFreqAttrs,
+                                     Map<Integer, Set<String>> candiProbR, Map<Integer, Set<String>> candiNoProbR,
+                                     Map<Integer, Set<String>> candiAssignR, Map<List<String>, List<String>> recAttrs2Qgrams) {
 
         int m = Math.max(sortedFreqBfs.size() + nonFreqBfs.size(), sortedFreqAttrs.size() + nonFreqAttrs.size());
 
@@ -206,20 +222,20 @@ public class EvalAttack {
         for (int i = 0; i < threadNum; i++) {
             int start = i * num_entity_per_thread;
             int end = Math.min(start + num_entity_per_thread, totalPairs);
-            List<List<String>> bfAttrPairKeyList = bfAttrPair.keySet().stream().toList();
+            List<BitSet> bfAttrPairKeyList = bfAttrPair.keySet().stream().toList();
             threadPool.execute(() -> {
                 for (int j = start; j < end; j++) {
-                    List<String> bf = bfAttrPairKeyList.get(j);
-                    List<List<String>> BiS = new ArrayList<>();
-                    List<List<String>> BiL = new ArrayList<>();
+                    BitSet bf = bfAttrPairKeyList.get(j);
+                    List<BitSet> BiS = new ArrayList<>();
+                    List<BitSet> BiL = new ArrayList<>();
                     List<List<String>> ViS = new ArrayList<>();
                     List<List<String>> ViL = new ArrayList<>();
 
-                    for (String[] nonFreqBF : nonFreqBfs) {
-                        String nonFreqBFStr = nonFreqBF[0];
-                        List<String> nonFreqBFList = Arrays.asList(nonFreqBFStr.split("  "));
-                        if (nonFreqBFList.containsAll(bf) && bf.size() < nonFreqBFList.size()) BiL.add(nonFreqBFList);
-                        if (bf.containsAll(nonFreqBFList) && nonFreqBFList.size() < bf.size()) BiS.add(nonFreqBFList);
+                    for (BitSet nonFreqBF : nonFreqBfs) {
+                        BitSet nonFreqBFTemp = nonFreqBF.get(0, nonFreqBF.size());
+                        nonFreqBFTemp.and(bf);
+                        if (nonFreqBFTemp.equals(bf) && bf.cardinality() < nonFreqBF.cardinality()) BiL.add(nonFreqBF);
+                        if (nonFreqBFTemp.equals(nonFreqBF) && nonFreqBF.cardinality() < bf.cardinality()) BiS.add(nonFreqBF);
                     }
 
                     List<String> attr = bfAttrPair.get(bf);
@@ -239,14 +255,13 @@ public class EvalAttack {
                         }
                         Set<String> qgramsD = new HashSet<>(qgrams);
                         qgramsD.removeAll(qgramsU);
-                        Set<String> bfO = new HashSet<>();
-                        for (List<String> bfTemp : BiS) {
-                            bfO.addAll(bfTemp);
+                        BitSet bfO = new BitSet(bfLen);
+                        for (BitSet bfTemp : BiS) {
+                            bfO.or(bfTemp);
                         }
-                        if (qgramsD.size() > 0 && !bfO.equals(new HashSet<>(bf))) {
-                            for (int k = 0; k < bfLen; k++) {
-                                String pos = String.valueOf(k);
-                                if (!bfO.contains(pos) && bf.contains(pos)) {
+                        if (qgramsD.size() > 0 && !bfO.equals(bf)) {
+                            for (int pos = 0; pos < bfLen; pos++) {
+                                if (!bfO.get(pos) && bf.get(pos)) {
                                     synchronized (candiProbR) {
                                         Set<String> set1 = candiProbR.getOrDefault(pos, new HashSet<>());
                                         set1.addAll(qgramsD);
@@ -282,19 +297,17 @@ public class EvalAttack {
                         }
                         Set<String> qgramsD = new HashSet<>(qgramsS);
                         qgrams.forEach(qgramsD::remove);
-                        Set<String> bfO = new HashSet<>();
-                        for (List<String> bfTemp : BiL) {
-                            bfO.addAll(bfTemp);
+                        BitSet bfO = new BitSet(bfLen);
+                        for (BitSet bfTemp : BiL) {
+                            bfO.or(bfTemp);
                         }
-                        Set<String> bfA = new HashSet<>();
-                        for (List<String> bfTemp : BiL) {
-                            if (bfA.size() == 0) bfA.addAll(bfTemp);
-                            else bfO.retainAll(bfTemp);
+                        BitSet bfA = new BitSet(bfLen);
+                        for (BitSet bfTemp : BiL) {
+                            bfA.and(bfTemp);
                         }
-                        if (qgramsD.size() > 0 && !bfA.equals(new HashSet<>(bf))) {
-                            for (int k = 0; k < bfLen; k++) {
-                                String pos = String.valueOf(k);
-                                if (!bf.contains(pos) && bfA.contains(pos)) {
+                        if (qgramsD.size() > 0 && !bfA.equals(bf)) {
+                            for (int pos = 0; pos < bfLen; pos++) {
+                                if (!bf.get(pos) && bfA.get(pos)) {
                                     synchronized (candiProbR) {
                                         Set<String> set1 = candiProbR.getOrDefault(pos, new HashSet<>());
                                         set1.addAll(qgramsD);
@@ -308,7 +321,7 @@ public class EvalAttack {
                                             candiAssignR.put(pos, set3);
                                         }
                                     }
-                                } else if (!bfO.contains(pos) && !bf.contains(pos)) {
+                                } else if (!bfO.get(pos) && !bf.get(pos)) {
                                     synchronized (candiNoProbR) {
                                         Set<String> set2 = candiNoProbR.getOrDefault(pos, new HashSet<>());
                                         set2.addAll(qgramsU);
@@ -329,10 +342,10 @@ public class EvalAttack {
         }
     }
 
-    public void getGNOrGP(Map<String, List<String>> attrs, Map<String, Set<String>> candiM, Set<List<String>> GNorGP,
+    public void getGNOrGP(Map<String, List<String>> attrs, Map<Integer, Set<String>> candiM, Set<List<String>> GNorGP,
                           Map<List<String>, List<String>> recAttrs2Qgrams) {
         Set<String> QN = new HashSet<>();
-        for (String pos : candiM.keySet()) {
+        for (int pos : candiM.keySet()) {
             if (candiM.containsKey(pos)) QN.addAll(candiM.get(pos));
         }
 
@@ -371,7 +384,7 @@ public class EvalAttack {
         }
     }
 
-    public Map<String, Set<List<String>>> identifyOnProb(Map<String, String> bfs, Map<String, Set<String>> candiProbM,
+    public Map<String, Set<List<String>>> identifyOnProb(Map<String, BitSet> bfs, Map<Integer, Set<String>> candiProbM,
                                                          Set<List<String>> GP, Map<List<String>, List<String>> recAttrs2Qgrams) {
         Map<String, Set<List<String>>> R = new HashMap<>();
 
@@ -386,12 +399,10 @@ public class EvalAttack {
             threadPool.execute(() -> {
                 for (int j = start; j < end; j++) {
                     String entityID = bfsKeyList.get(j);
-                    String bf = bfs.get(entityID);
-                    List<String> bfPositions = Arrays.asList(bf.split("  "));
+                    BitSet bfPositions = bfs.get(entityID);
                     List<List<String>> G = new ArrayList<>(GP);
-                    for (int k = 0; k < bfLen; k++) {
-                        String pos = String.valueOf(k);
-                        if (bfPositions.contains(pos)) {
+                    for (int pos = 0; pos < bfLen; pos++) {
+                        if (bfPositions.get(pos)) {
                             Set<String> qp = candiProbM.get(pos);
                             for (int p = 0; p < G.size(); p++) {
                                 List<String> recAttrs = G.get(p);
@@ -419,25 +430,24 @@ public class EvalAttack {
         return R;
     }
 
-    public Map<String, Set<List<String>>> identifyOnNoProb(Map<String, String> bfs, Map<String, Set<String>> candiNoProbM,
+    public Map<String, Set<List<String>>> identifyOnNoProb(Map<String, BitSet> bfs, Map<Integer, Set<String>> candiNoProbM,
                                                            Set<List<String>> GN, Map<List<String>, List<String>> recAttrs2Qgrams) {
         Set<String> QN = new HashSet<>();
-        for (String pos : candiNoProbM.keySet()) {
+        for (int pos : candiNoProbM.keySet()) {
             if (candiNoProbM.containsKey(pos)) QN.addAll(candiNoProbM.get(pos));
         }
 
-        Map<String, List<String>> BQ = new HashMap<>();
-        Map<List<String>, List<String>> BG = new HashMap<>();
+        Map<String, BitSet> BQ = new HashMap<>();
+        Map<List<String>, BitSet> BG = new HashMap<>();
         for (String qgram : QN) {
-            BQ.put(qgram, new ArrayList<>());
+            BQ.put(qgram, new BitSet(bfLen));
         }
 
-        for (int i = 0; i < bfLen; i++) {
-            String pos = String.valueOf(i);
+        for (int pos = 0; pos < bfLen; pos++) {
             if (candiNoProbM.containsKey(pos)) {
                 for (String qgram : candiNoProbM.get(pos)) {
-                    List<String> posTemp = BQ.get(qgram);
-                    posTemp.add(pos);
+                    BitSet posTemp = BQ.get(qgram);
+                    posTemp.set(pos);
                     BQ.put(qgram, posTemp);
                 }
             }
@@ -456,10 +466,9 @@ public class EvalAttack {
                     List<String> recAttrs = GNList.get(j);
                     List<String> qj = recAttrs2Qgrams.get(recAttrs);
                     if (QN.containsAll(qj)) {
-                        List<String> posTemp = BG.getOrDefault(recAttrs, new ArrayList<>());
+                        BitSet posTemp = BG.getOrDefault(recAttrs, new BitSet(bfLen));
                         for (String qgram : qj) {
-                            if (posTemp.size() == 0) posTemp.addAll(BQ.get(qgram));
-                            else posTemp.retainAll(BQ.get(qgram));
+                            posTemp.and(BQ.get(qgram));
                         }
                         synchronized (BG) {
                             BG.put(recAttrs, posTemp);
@@ -477,13 +486,14 @@ public class EvalAttack {
 
         Map<String, Set<List<String>>> R = new HashMap<>();
         for (String entityID : bfs.keySet()) {
-            String bf = bfs.get(entityID);
+            BitSet bf = bfs.get(entityID);
             Set<List<String>> G = new HashSet<>();
             for (List<String> recAttrs : GN) {
                 if (BG.containsKey(recAttrs)){
-                    List<String> posTemp = BG.get(recAttrs);
-                    posTemp.removeAll(Arrays.asList(bf.split("  ")));
-                    if (posTemp.size() == 0) G.add(recAttrs);
+                    BitSet posTemp = BG.get(recAttrs);
+                    BitSet posTempTemp = posTemp.get(0, posTemp.size());
+                    posTempTemp.and(bf);
+                    if (posTempTemp.cardinality() == 0) G.add(recAttrs);
                 }
             }
             R.put(entityID, G);
@@ -638,7 +648,7 @@ public class EvalAttack {
                 "indexD-0.2,0.01,0.05,0.02,0.001",
                 "indexD-0.1,0.05,0.02,0.01,0.001"
         };
-        Map<String, String> bfs;
+        Map<String, BitSet> bfs;
         Map<String, List<Integer>> storeNoProbResult = new HashMap<>();
         Map<String, List<Integer>> storeProbResult = new HashMap<>();
         for (String hashType : hash_type_list) {
@@ -656,30 +666,29 @@ public class EvalAttack {
 
                         System.out.println("    Sort Bloom Filters");
                         startTime = time.getTime();
-                        List<List<String[]>> bfsRes = evalAttack.sortBFs(bfs, freqT);
-                        List<String[]> sortedFreqBfs = bfsRes.get(0);
-                        List<String[]> nonFreqBfs = bfsRes.get(1);
+                        List<List<BitSet>> bfsRes = evalAttack.sortBFs(bfs, freqT);
+                        List<BitSet> sortedFreqBfs = bfsRes.get(0);
+                        List<BitSet> nonFreqBfs = bfsRes.get(1);
                         endTime = time.getTime();
                         System.out.printf("      freq bfs size: %d / non freq bfs size: %d\n", sortedFreqBfs.size(),
                                 nonFreqBfs.size());
                         System.out.printf("      sort bfs cost time: %d msec\n", endTime - startTime);
 
                         System.out.println("    Generate Bloom Filter and Record Pair by freq");
-                        Map<List<String>, List<String>> bfAttrPair = new HashMap<>();
+                        Map<BitSet, List<String>> bfAttrPair = new HashMap<>();
                         for (int i = 0; i < Math.min(sortedFreqBfs.size(), sortedFreqAttrs.size()); i++) {
-                            String[] bfFreq = sortedFreqBfs.get(i);
                             String[] attrFreq = sortedFreqAttrs.get(i);
-                            String[] bfPositions = bfFreq[0].split("  ");
                             String[] attrs = attrFreq[0].split(",");
-                            bfAttrPair.put(Arrays.asList(bfPositions), Arrays.asList(attrs));
+                            BitSet bfPositions = sortedFreqBfs.get(i);
+                            bfAttrPair.put(bfPositions, Arrays.asList(attrs));
                         }
 
                         System.out.println("    Generate basic candidates(possible, no possible, assign)");
                         startTime = time.getTime();
-                        Map<String, Set<String>> candiProbB = new HashMap<>();
-                        Map<String, Set<String>> candiNoProbB = new HashMap<>();
+                        Map<Integer, Set<String>> candiProbB = new HashMap<>();
+                        Map<Integer, Set<String>> candiNoProbB = new HashMap<>();
                         evalAttack.getCandidateB(bfAttrPair, candiProbB, candiNoProbB, recAttr2Qgrams);
-                        Map<String, Set<String>> candiAssignB = new HashMap<>();
+                        Map<Integer, Set<String>> candiAssignB = new HashMap<>();
                         evalAttack.getQgramPosAssign(bfAttrPair, candiProbB, candiAssignB, recAttr2Qgrams);
                         endTime = time.getTime();
                         System.out.printf("      generate basic candidates(possible, no possible, assign) cost time: %d msec\n",
@@ -687,9 +696,9 @@ public class EvalAttack {
 
                         System.out.println("    Generate refined and expended candidates(possible, no possible, assign)");
                         startTime = time.getTime();
-                        Map<String, Set<String>> candiProbR = new HashMap<>();
-                        Map<String, Set<String>> candiNoProbR = new HashMap<>();
-                        Map<String, Set<String>> candiAssignR = new HashMap<>();
+                        Map<Integer, Set<String>> candiProbR = new HashMap<>();
+                        Map<Integer, Set<String>> candiNoProbR = new HashMap<>();
+                        Map<Integer, Set<String>> candiAssignR = new HashMap<>();
                         evalAttack.qgramRefineAndExpend(bfAttrPair, sortedFreqBfs, sortedFreqAttrs, nonFreqBfs,
                                 nonFreqAttrs, candiProbR, candiNoProbR, candiAssignR, recAttr2Qgrams);
                         endTime = time.getTime();
@@ -697,11 +706,10 @@ public class EvalAttack {
                                 endTime - startTime);
 
                         System.out.println("    Generate merged candidates(possible, no possible, assign)");
-                        Map<String, Set<String>> candiProbM = new HashMap<>();
-                        Map<String, Set<String>> candiNoProbM = new HashMap<>();
-                        Map<String, Set<String>> candiAssignM = new HashMap<>();
-                        for (int i = 0; i < evalAttack.bfLen; i++) {
-                            String pos = String.valueOf(i);
+                        Map<Integer, Set<String>> candiProbM = new HashMap<>();
+                        Map<Integer, Set<String>> candiNoProbM = new HashMap<>();
+                        Map<Integer, Set<String>> candiAssignM = new HashMap<>();
+                        for (int pos = 0; pos < evalAttack.bfLen; pos++) {
                             Set<String> set2 = new HashSet<>();
                             if (candiNoProbB.containsKey(pos)) set2.addAll(candiNoProbB.get(pos));
                             if (candiNoProbR.containsKey(pos)) set2.addAll(candiNoProbR.get(pos));
