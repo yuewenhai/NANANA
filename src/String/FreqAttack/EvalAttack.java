@@ -48,7 +48,7 @@ public class EvalAttack {
                 bfs.put(lineArray[0], bitSet);
                 line = br.readLine();
             }
-            System.out.printf("load bfs from : %s%n", bfsFile);
+            System.out.printf("      load bfs from : %s%n", bfsFile);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -485,18 +485,35 @@ public class EvalAttack {
         }
 
         Map<String, Set<List<String>>> R = new HashMap<>();
-        for (String entityID : bfs.keySet()) {
-            BitSet bf = bfs.get(entityID);
-            Set<List<String>> G = new HashSet<>();
-            for (List<String> recAttrs : GN) {
-                if (BG.containsKey(recAttrs)){
-                    BitSet posTemp = BG.get(recAttrs);
-                    BitSet posTempTemp = posTemp.get(0, posTemp.size());
-                    posTempTemp.and(bf);
-                    if (posTempTemp.cardinality() == 0) G.add(recAttrs);
+        int totalBFs = bfs.keySet().size();
+        num_entity_per_thread = totalBFs / threadNum + 1;
+        CountDownLatch countDownLatch1 = new CountDownLatch(threadNum); // execute all the threads, then continue
+        for (int i = 0; i < threadNum; i++) {
+            int start = i * num_entity_per_thread;
+            int end = Math.min(start + num_entity_per_thread, totalBFs);
+            List<String> bfKetList = bfs.keySet().stream().toList();
+            threadPool.execute(() -> {
+                for (int j = start;j < end;j++) {
+                    String entityID = bfKetList.get(j);
+                    BitSet bf = bfs.get(entityID);
+                    Set<List<String>> G = new HashSet<>();
+                    for (List<String> recAttrs : GN) {
+                        if (BG.containsKey(recAttrs)){
+                            BitSet posTemp = BG.get(recAttrs);
+                            BitSet posTempTemp = posTemp.get(0, posTemp.size());
+                            posTempTemp.and(bf);
+                            if (posTempTemp.cardinality() == 0) G.add(recAttrs);
+                        }
+                    }
+                    R.put(entityID, G);
                 }
-            }
-            R.put(entityID, G);
+                countDownLatch1.countDown();
+            });
+        }
+        try {
+            countDownLatch1.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
         return R;
     }
@@ -546,10 +563,10 @@ public class EvalAttack {
         EvalAttack evalAttack = new EvalAttack();
         int freqT = 2;
 
-        String attrFile = "/Users/takafumikai/dataset/ncvoter/ncvoter-s-50000-1.csv";
-        String storeNoProbFile = "/Users/takafumikai/dataset/ncvoter/attackNoProb.csv";
-        String storeProbFile = "/Users/takafumikai/dataset/ncvoter/attackProb.csv";
-        String bfFilePath = "/Users/takafumikai/dataset/ncvoter/";
+        String attrFile = "D:/dataset/ncvoter/ncvoter-s-50000-1.csv";
+        String storeNoProbFile = "D:/dataset/ncvoter/attackNoProb.csv";
+        String storeProbFile = "D:/dataset/ncvoter/attackProb.csv";
+        String bfFilePath = "D:/dataset/ncvoter/12s1s1/storeBF/";
         String datasetName = "s-1-1";
         String dateDiff = "none";
         int[] attr_index_list = {1, 2};  // attr's columns used
@@ -557,7 +574,6 @@ public class EvalAttack {
 
         EvalLinkage evalLinkage = new EvalLinkage(null, null, null);
 
-        Date time = new Date();
         long startTime;
         long endTime;
 
@@ -565,88 +581,25 @@ public class EvalAttack {
         Map<String, List<String>> rec_attr_val_dict = result.get(0);
 
         System.out.println("Generate qgrams for records");
-        startTime = time.getTime();
+        startTime = new Date().getTime();
         Map<List<String>, List<String>> recAttr2Qgrams = evalAttack.getQgramsForRec(rec_attr_val_dict);
-        endTime = time.getTime();
+        endTime = new Date().getTime();
         System.out.printf(" generate qgrams for record cost time: %d msec\n", endTime - startTime);
 
         System.out.println("Sort record attributes");
-        startTime = time.getTime();
+        startTime = new Date().getTime();
         List<List<String[]>> attrRes = evalAttack.sortAttrs(rec_attr_val_dict, freqT);
         List<String[]> sortedFreqAttrs = attrRes.get(0);
         List<String[]> nonFreqAttrs = attrRes.get(1);
-        endTime = time.getTime();
+        endTime = new Date().getTime();
         System.out.printf(" freq records size: %d / non freq records size: %d\n", sortedFreqAttrs.size(), nonFreqAttrs.size());
         System.out.printf(" sort record attributes cost time: %d msec\n", endTime - startTime);
 
-        String[] hash_type_list = new String[]{"dh-false", "dh-true", "rh-false", "rh-true"};
-        String[] num_hash_functions_list = {"10", "20", "30"};
+        String[] hash_type_list = new String[]{"dh-false"};
+        String[] num_hash_functions_list = {"10"};
         String[] encode_type_list = {"clk"};
         String[] bf_harden_types = new String[]{
                 "none",
-                "salt",
-                "bal",
-                "rxor",
-                "wxor-2",
-                "blip-0.05",
-                "blip-0.02",
-                "blip-0.1",
-                "urap-0.1-4",
-                "urap-0.1-5",
-                "urap-0.1-6",
-                "urap-0.1-7",
-                "urap-0.1-8",
-                "urap-0.1-9",
-                "urap-0.2-4",
-                "urap-0.2-5",
-                "urap-0.2-6",
-                "urap-0.2-7",
-                "urap-0.2-8",
-                "urap-0.2-9",
-                "urap-0.3-4",
-                "urap-0.3-5",
-                "urap-0.3-6",
-                "urap-0.3-7",
-                "urap-0.3-8",
-                "urap-0.3-9",
-                "urap-0.4-4",
-                "urap-0.4-5",
-                "urap-0.4-6",
-                "urap-0.4-7",
-                "urap-0.4-8",
-                "urap-0.4-9",
-                "urap-0.5-4",
-                "urap-0.5-5",
-                "urap-0.5-6",
-                "urap-0.5-7",
-                "urap-0.5-8",
-                "urap-0.5-9",
-                "urap-0.6-4",
-                "urap-0.6-5",
-                "urap-0.6-6",
-                "urap-0.6-7",
-                "urap-0.6-8",
-                "urap-0.6-9",
-                "urap-0.7-4",
-                "urap-0.7-5",
-                "urap-0.7-6",
-                "urap-0.7-7",
-                "urap-0.7-8",
-                "urap-0.7-9",
-                "urap-0.8-4",
-                "urap-0.8-5",
-                "urap-0.8-6",
-                "urap-0.8-7",
-                "urap-0.8-8",
-                "urap-0.8-9",
-                "urap-0.9-4",
-                "urap-0.9-5",
-                "urap-0.9-6",
-                "urap-0.9-7",
-                "urap-0.9-8",
-                "urap-0.9-9",
-                "indexD-0.2,0.01,0.05,0.02,0.001",
-                "indexD-0.1,0.05,0.02,0.01,0.001"
         };
         Map<String, BitSet> bfs;
         Map<String, List<Integer>> storeNoProbResult = new HashMap<>();
@@ -659,17 +612,17 @@ public class EvalAttack {
                                 hardenType, numHashFunctions);
                         evalAttack.k = Integer.parseInt(numHashFunctions);
                         System.out.println("    Load bf file");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         bfs = evalAttack.loadBFs(bfFilePath, datasetName, encodeType, hashType, hardenType, numHashFunctions);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      load bf file cost time: %d msec\n", endTime - startTime);
 
                         System.out.println("    Sort Bloom Filters");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         List<List<BitSet>> bfsRes = evalAttack.sortBFs(bfs, freqT);
                         List<BitSet> sortedFreqBfs = bfsRes.get(0);
                         List<BitSet> nonFreqBfs = bfsRes.get(1);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      freq bfs size: %d / non freq bfs size: %d\n", sortedFreqBfs.size(),
                                 nonFreqBfs.size());
                         System.out.printf("      sort bfs cost time: %d msec\n", endTime - startTime);
@@ -682,26 +635,27 @@ public class EvalAttack {
                             BitSet bfPositions = sortedFreqBfs.get(i);
                             bfAttrPair.put(bfPositions, Arrays.asList(attrs));
                         }
+                        System.out.printf("      bf and rec pairs size: %d msec\n", bfAttrPair.size());
 
                         System.out.println("    Generate basic candidates(possible, no possible, assign)");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         Map<Integer, Set<String>> candiProbB = new HashMap<>();
                         Map<Integer, Set<String>> candiNoProbB = new HashMap<>();
                         evalAttack.getCandidateB(bfAttrPair, candiProbB, candiNoProbB, recAttr2Qgrams);
                         Map<Integer, Set<String>> candiAssignB = new HashMap<>();
                         evalAttack.getQgramPosAssign(bfAttrPair, candiProbB, candiAssignB, recAttr2Qgrams);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      generate basic candidates(possible, no possible, assign) cost time: %d msec\n",
                                 endTime - startTime);
 
                         System.out.println("    Generate refined and expended candidates(possible, no possible, assign)");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         Map<Integer, Set<String>> candiProbR = new HashMap<>();
                         Map<Integer, Set<String>> candiNoProbR = new HashMap<>();
                         Map<Integer, Set<String>> candiAssignR = new HashMap<>();
                         evalAttack.qgramRefineAndExpend(bfAttrPair, sortedFreqBfs, sortedFreqAttrs, nonFreqBfs,
                                 nonFreqAttrs, candiProbR, candiNoProbR, candiAssignR, recAttr2Qgrams);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      generate refined and expended candidates(possible, no possible, assign) cost time: %d msec\n",
                                 endTime - startTime);
 
@@ -729,36 +683,36 @@ public class EvalAttack {
                         }
 
                         System.out.println("    Generate GN and GP");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         Set<List<String>> GN = new HashSet<>();
                         Set<List<String>> GP = new HashSet<>();
                         evalAttack.getGNOrGP(rec_attr_val_dict, candiNoProbM, GN, recAttr2Qgrams);
                         evalAttack.getGNOrGP(rec_attr_val_dict, candiProbM, GP, recAttr2Qgrams);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      generate GN and GP cost time: %d msec\n", endTime - startTime);
 
                         System.out.println("    Re-identify on possible candidates");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         Map<String, Set<List<String>>> ROnProb = evalAttack.identifyOnProb(bfs, candiProbM, GP, recAttr2Qgrams);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      re-identify on possible candidates cost time: %d msec\n", endTime - startTime);
 
                         System.out.println("    Re-identify on no possible candidates");
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         Map<String, Set<List<String>>> ROnNoProb = evalAttack.identifyOnNoProb(bfs, candiNoProbM, GN, recAttr2Qgrams);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("      re-identify on no possible candidates cost time: %d msec\n", endTime - startTime);
 
                         String method = String.format("%s-encode%s-hash%s-harden%s-k%s-bfLen%d", datasetName,
                                 encodeType, hashType, hardenType, numHashFunctions, evalAttack.bfLen);
-                        startTime = time.getTime();
+                        startTime = new Date().getTime();
                         List<Integer> resultProb = evalAttack.statistic(rec_attr_val_dict, ROnProb);
                         storeProbResult.put(method, resultProb);
 
 
                         List<Integer> resultNoProb = evalAttack.statistic(rec_attr_val_dict, ROnNoProb);
                         storeNoProbResult.put(method, resultNoProb);
-                        endTime = time.getTime();
+                        endTime = new Date().getTime();
                         System.out.printf("    Re-identify on possible candidates result: 1-1:%d 1-m:%d w:%d\n",
                                 resultProb.get(0), resultProb.get(1), resultProb.get(2));
                         System.out.printf("    Re-identify on no possible candidates result: 1-1:%d 1-m:%d w:%d\n",
@@ -773,6 +727,8 @@ public class EvalAttack {
         System.out.printf("Store result on possible candidates in %s, result size: %d\n", storeProbFile, storeProbResult.size());
         evalAttack.storeResult2File(storeNoProbFile, storeNoProbResult);
         System.out.printf("Store result on no possible candidates in %s, result size: %d\n", storeNoProbFile, storeProbResult.size());
+
+        evalAttack.threadPool.shutdown();
     }
 
     public List<Integer> statistic(Map<String, List<String>> recAttrsDict, Map<String, Set<List<String>>> R) {
