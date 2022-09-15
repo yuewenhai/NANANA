@@ -75,47 +75,70 @@ public class DPRL {
         T.add(7);
         T.add(9);
 
+        List<Double> epsilons = new ArrayList<>();
+        epsilons.add(0.0);
+        epsilons.add(0.5);
+        epsilons.add(1.0);
+        epsilons.add(1.5);
+        epsilons.add(2.0);
+        epsilons.add(2.5);
+        epsilons.add(3.0);
+
+        List<Double> hts = new ArrayList<>();
+        hts.add(1.0);
+        hts.add(1.1);
+        hts.add(1.2);
+        hts.add(1.3);
+
         List<Dataset> datasets = new ArrayList<>();
         datasets.add(Dataset.AGES);
         datasets.add(Dataset.HEIGHTS);
 
-        int dataSize = 10000;
+        RandomResponse rr = new RandomResponse();
+
+        int dataSize = 2000;
         int bitVectorSize = 1000;
         for (Dataset datasetName : datasets) {
             List<Double> dataset = util.generateDataset(datasetName.name(), dataSize, datasetName.low(), datasetName.high());
             util.storeDataset(dataset, datasetName.name());
-            for (int t : T) {
-                List<List<Double>> result = new ArrayList<>();
-                List<List<Double>> result3 = new ArrayList<>();
-                for (int i = 0; i < 20; i++) {
-                    System.out.printf("%s T:%d 第%d次%n", datasetName.name(), t, i);
-                    result.add(dprl.experiment(datasetName.name(), dataset, bitVectorSize, "DPRL", t));
+            for (double ht : hts) {
+                util.setHt(ht);
+                for (double epsilon : epsilons) {
+                    rr.setEpsilon(epsilon);
+                    for (int t : T) {
+                        List<List<Double>> result = new ArrayList<>();
+                        List<List<Double>> result3 = new ArrayList<>();
+                        for (int i = 0; i < 20; i++) {
+                            System.out.printf("%s ht:%.2f T:%d ep:%.2f 第%d次%n", datasetName.name(), util.ht, t, rr.epsilon, i);
+                            result.add(dprl.experiment(datasetName.name(), dataset, bitVectorSize, "DPRL", t));
 //                    System.out.println(dprl.experiment("ages", dataSize, bitVectorSize, "PRODPRL_V1", t));
 //                    result2.add(dprl.experiment(datasetName, dataSize, bitVectorSize, "PRODPRL_V2", t));
-                    result3.add(dprl.experiment(datasetName.name(), dataset, bitVectorSize, "PRODPRL_V3", t));
-                }
-                File file = new File(String.format("result1/%s result T%d.txt", datasetName.name(), t));
-                if (!file.exists()) {
-                    try {
-                        file.createNewFile();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-                try (FileWriter fw = new FileWriter(file, false);
-                     BufferedWriter bw = new BufferedWriter(fw)) {
-                    for (int i = 0; i < result.size(); i++) {
-                        StringBuilder resultTemp = new StringBuilder();
-                        StringBuilder result3Temp = new StringBuilder();
-                        for (int j = 0; j < result.get(i).size(); j++) {
-                            resultTemp.append(result.get(i).get(j).toString()).append(" ");
-                            result3Temp.append(result3.get(i).get(j).toString()).append(" ");
+                            result3.add(dprl.experiment(datasetName.name(), dataset, bitVectorSize, "PRODPRL_V3", t));
                         }
-                        bw.write(resultTemp.append("\n").toString());
-                        bw.write(result3Temp.append("\n").toString());
+                        File file = new File(String.format("result1.2/%s ht-%.2f result T%d ep%.2f.txt", datasetName.name(), util.ht, t, rr.epsilon));
+                        if (!file.exists()) {
+                            try {
+                                file.createNewFile();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                        try (FileWriter fw = new FileWriter(file, false);
+                             BufferedWriter bw = new BufferedWriter(fw)) {
+                            for (int i = 0; i < result.size(); i++) {
+                                StringBuilder resultTemp = new StringBuilder();
+                                StringBuilder result3Temp = new StringBuilder();
+                                for (int j = 0; j < result.get(i).size(); j++) {
+                                    resultTemp.append(result.get(i).get(j).toString()).append(" ");
+                                    result3Temp.append(result3.get(i).get(j).toString()).append(" ");
+                                }
+                                bw.write(resultTemp.append("\n").toString());
+                                bw.write(result3Temp.append("\n").toString());
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
                     }
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
             }
         }

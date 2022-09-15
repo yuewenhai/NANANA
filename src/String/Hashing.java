@@ -20,16 +20,6 @@ public class Hashing {
         return null;
     }
 
-    public double cal_q_gram_sim(List<String> q_gram_list1, List<String> q_gram_list2) {
-        Set<String> q_gram_set1 = new HashSet<>(q_gram_list1);
-        int size1 = q_gram_set1.size();
-        Set<String> q_gram_set2 = new HashSet<>(q_gram_list2);
-        int size2 = q_gram_set2.size();
-        q_gram_set1.retainAll(q_gram_set2);
-
-        return (2.0 * q_gram_set1.size()) / (size1 + size2);
-    }
-
     public BigInteger hashFunction(String hash_function, String q_gram){
         MessageDigest messageDigest = null;
         try {

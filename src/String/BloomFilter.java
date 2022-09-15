@@ -51,7 +51,7 @@ public class BloomFilter {
         System.out.println("store results 耗时:" + (double)(endTime - startTime) / 1000);
     }
 
-    private void blocking(List<List<List<String>>> datasets, int[][][] bitVectors, String blockingMethod,
+    public void blocking(List<List<List<String>>> datasets, int[][][] bitVectors, String blockingMethod,
                           List<Map<String, List<List<String>>>> blockDatasets,
                           List<Map<String, List<List<Integer>>>> blockBitVectors, int bitVectorSize) {
         int[][] bigThetas = generateBlockBigThetas(bitVectorSize);
@@ -62,14 +62,13 @@ public class BloomFilter {
 
             Map<String, List<List<String>>> ithBlockDataset = new HashMap<>();
             Map<String, List<List<Integer>>> ithBlockBitVectors = new HashMap<>();
-            List<Integer> tempList = new ArrayList<>();
             if (blockingMethod.equals("Soundex")) {
                 for (int j = 0; j < ithDataset.size(); j++) {
                     List<String> record = ithDataset.get(j);
                     int[] recordBitVector = ithBitVectors[j];
                     String pername2 = record.get(blockIndex);
                     String soundex = generateSoundex(pername2);
-                    addRecord(ithBlockDataset, ithBlockBitVectors, tempList, record, recordBitVector, soundex);
+                    addRecord(ithBlockDataset, ithBlockBitVectors, record, recordBitVector, soundex);
                 }
             }else if (blockingMethod.equals("HLSH")) {
                 for (int j = 0;j < ithBitVectors.length;j++){
@@ -82,7 +81,7 @@ public class BloomFilter {
                             keyBuilder.append(recordBitVector[f]);
                         }
                         String key = keyBuilder.toString();
-                        addRecord(ithBlockDataset, ithBlockBitVectors, tempList, record, recordBitVector, key);
+                        addRecord(ithBlockDataset, ithBlockBitVectors, record, recordBitVector, key);
                     }
                 }
             }
@@ -92,7 +91,8 @@ public class BloomFilter {
         }
     }
 
-    private void addRecord(Map<String, List<List<String>>> ithBlockDataset, Map<String, List<List<Integer>>> ithBlockBitVectors, List<Integer> tempList, List<String> record, int[] recordBitVector, String key) {
+    private void addRecord(Map<String, List<List<String>>> ithBlockDataset, Map<String,
+            List<List<Integer>>> ithBlockBitVectors, List<String> record, int[] recordBitVector, String key) {
         List<List<String>> tempDataset;
         List<List<Integer>> tempBitVector;
         if (!ithBlockDataset.containsKey(key)) {
@@ -103,7 +103,7 @@ public class BloomFilter {
             tempDataset = ithBlockDataset.get(key);
             tempDataset.add(record);
         }
-        tempList.clear();
+        List<Integer> tempList = new ArrayList<>();
         if (!ithBlockBitVectors.containsKey(key)) {
             tempBitVector = new ArrayList<>();
             array2List(recordBitVector, tempList);
@@ -261,7 +261,7 @@ public class BloomFilter {
         }
     }
 
-    public List<String> ngrams(int n, List<String> record) {
+    private List<String> ngrams(int n, List<String> record) {
         List<String> ngrams = new ArrayList<>();
         for (int i = 0; i < record.size(); i++) {
             String tempStr = record.get(i);
@@ -279,7 +279,7 @@ public class BloomFilter {
         return ngrams;
     }
 
-    public boolean isNumeric(String str){
+    private boolean isNumeric(String str){
         for (int i = 0;i < str.length();i++){
             if (!Character.isDigit(str.charAt(i))){
                 return false;
@@ -288,7 +288,7 @@ public class BloomFilter {
         return true;
     }
 
-    public void calSimilarities(Map<String, List<List<String>>> dataset1, Map<String, List<List<String>>> dataset2,
+    private void calSimilarities(Map<String, List<List<String>>> dataset1, Map<String, List<List<String>>> dataset2,
                                 Map<String, List<List<Integer>>> bitVectors1, Map<String, List<List<Integer>>> bitVectors2,
                                 List<Double[]> similarities, int numGrams) {
         for (String key : dataset1.keySet()){
@@ -342,9 +342,64 @@ public class BloomFilter {
                 }
             }
         }
+//        int threadNum = 8;//线程数量
+//        List<String> keySet = dataset1.keySet().stream().toList();
+//        int keySetSize = keySet.size();
+//        int numPerThread = Math.floorDiv(keySetSize, threadNum) + 1;
+//        List<Thread> threads = new ArrayList<>();
+//
+//        for (int i = 0;i < threadNum;i++){
+//            int start = i * numPerThread;
+//            int end = Math.min(start + numPerThread, keySetSize);
+//            Thread thread = new Thread(() -> {
+//                List<List<String>> keyDataset1;
+//                List<List<String>> keyDataset2;
+//                List<List<Integer>> keyBitVector1;
+//                List<List<Integer>> keyBitVector2;
+//                Double[] simTuple = new Double[2];
+//                int keyDataset1Size;
+//                int keyDataset2Size;
+//                double sim;
+//                double esSim;
+//
+//                for (int j = start; j < end; j++) {
+//                    if (dataset2.containsKey(keySet.get(j))) {
+//                        //第二个数据集有这个key才继续
+//                        keyDataset2 = dataset2.get(keySet.get(j));
+//                        keyBitVector2 = bitVectors2.get(keySet.get(j));
+//                    }
+//                    else continue;
+//                    keyDataset1 = dataset1.get(keySet.get(j));
+//                    keyBitVector1 = bitVectors1.get(keySet.get(j));
+//                    keyDataset1Size = keyDataset1.size();
+//                    keyDataset2Size = keyDataset2.size();
+//
+//                    for (int k = 0; k < keyDataset1Size; k++) {
+//                        for (int p = 0; p < keyDataset2Size; p++) {
+//                            sim = calSimilarity(keyDataset1.get(k), keyDataset2.get(p), numGrams);
+//                            esSim = esSimilarity(keyBitVector1.get(k), keyBitVector2.get(p));
+//                            simTuple[0] = sim;
+//                            simTuple[1] = esSim;
+//                            synchronized (similarities) {
+//                                similarities.add(simTuple);
+//                            }
+//                        }
+//                    }
+//                }
+//            });
+//            thread.start();
+//            threads.add(thread);
+//        }
+//        for (Thread thread : threads) {
+//            try {
+//                thread.join();
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
     }
 
-    public double calSimilarity(List<String> record1, List<String> record2, int n) {
+    private double calSimilarity(List<String> record1, List<String> record2, int n) {
         int identical = 0;
         List<String> ngrams1 = ngrams(n, record1);
         List<String> ngrams2 = ngrams(n, record2);
@@ -358,7 +413,7 @@ public class BloomFilter {
         return (double) 2 * identical / (ngrams1.size() + ngrams2.size());
     }
 
-    public double esSimilarity(List<Integer> bitVector1, List<Integer> bitVector2) {
+    private double esSimilarity(List<Integer> bitVector1, List<Integer> bitVector2) {
         int identical = 0;
         int count1 = 0;
         int count2 = 0;
@@ -450,14 +505,14 @@ public class BloomFilter {
         String blockingMethod = "Soundex";
         for (String[] tempAttributes : attributes) {
             System.out.println("--------------------------" + Arrays.toString(tempAttributes) + "----------------------------");
-            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
-                    "Normal", key, blockingMethod);
+//            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
+//                    "Normal", key, blockingMethod);
             bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
                     "ULDP", key, blockingMethod);
-            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
-                    "WXOR", key, blockingMethod);
-            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
-                    "RESAM", key, blockingMethod);
+//            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
+//                    "WXOR", key, blockingMethod);
+//            bloomFilter.experiment("Istat", filenames, dataSize, bitVectorSize, nGrams, k, tempAttributes,
+//                    "RESAM", key, blockingMethod);
         }
     }
 }

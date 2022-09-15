@@ -34,6 +34,8 @@ public class Encoding {
             qGramList.addAll(qGramListForAttr(attr_val, q, padded));
         }
 
+        if (appendCntFlag) qGramList = add_count_2_q_gram(qGramList);
+
         return qGramList;
     }
 
@@ -113,7 +115,7 @@ class CLKBFEncoding extends Encoding {
     public BitSet clk_encode(List<String> q_gram_list) {
         BitSet clk_bf;
 
-        if (appendCntFlag) q_gram_list = add_count_2_q_gram(q_gram_list);
+//        if (appendCntFlag) q_gram_list = add_count_2_q_gram(q_gram_list);
 
         clk_bf = this.hash_method.hash_q_gram_list(q_gram_list);
 
@@ -142,13 +144,13 @@ class CLKBFEncoding extends Encoding {
 
     @Override
     public BitSet clk_encode(List<String> q_gram_list, String salt) {
-        BitSet clk_bf;
-
+        List<String> qGramListSalted = new ArrayList<>();
         for (String qGram : q_gram_list) {
             qGram = qGram + salt;
+            qGramListSalted.add(qGram);
         }
 
-        return clk_encode(q_gram_list);
+        return clk_encode(qGramListSalted);
     }
 }
 

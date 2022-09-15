@@ -4,7 +4,11 @@ import java.util.Random;
 
 public class RandomResponse {
     public final double coinFlipProb = 0.8;
-    public final double epsilon = 1;
+    public double epsilon = 4;
+
+    public void setEpsilon(double value) {
+        epsilon = value;
+    }
 
     public boolean coinFlipping() {
         Random rand = new Random();

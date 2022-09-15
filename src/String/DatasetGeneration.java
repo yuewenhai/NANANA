@@ -26,11 +26,18 @@ public class DatasetGeneration {
                 int count = 0;
                 String line = br.readLine();
                 String[] lineArray;
+                boolean skip = false;
                 while (line != null && count++ < datasetSize){
                     List<String> dataLine = new ArrayList<>();
                     lineArray = line.replace("\"", "").split(",");
                     for (int index : indexes) {
+                        if (lineArray[index].equals("") || lineArray[index] == null) skip = true;
                         dataLine.add(lineArray[index]);
+                    }
+                    if (skip) {
+                        skip = false;
+                        line = br.readLine();
+                        continue;
                     }
                     dataset.add(dataLine);
                     line = br.readLine();

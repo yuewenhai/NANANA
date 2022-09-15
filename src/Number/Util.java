@@ -10,6 +10,11 @@ public class Util {
     private final int n = 10;
     public final double gap = 1.0;
     private final List<Integer> pseudorandomIndexes = new ArrayList<>();
+    public double ht = 1.2;
+
+    public void setHt(double value) {
+        ht = value;
+    }
 
     /**
      * 生成数据集
@@ -28,13 +33,13 @@ public class Util {
         switch (datasetName) {
             case "HEIGHTS" -> {
                 double mean = (low + high) / 2;
-                double half_half = (mean - low) / 2;
+                double half = (high - low) / 2;
                 for (int i = 0; i < size; i++) {
                     randomValue = random.nextGaussian();
-                    value = randomValue * half_half + mean;
-                    if (value < low)
-                        dataset.add(low);
-                    else dataset.add(Math.floor(Math.min(value, high)));
+                    if (-3 <= randomValue && randomValue <= 3) {
+                        value = randomValue / 3 * half + mean;
+                        dataset.add(Math.floor(value));
+                    }else i--;
                 }
             }
             case "AGES" -> {
@@ -203,7 +208,7 @@ public class Util {
     public Double estimate(int[] bitVector1, int[] bitVector2, double low, double high, String method) {
         RandomResponse rr = new RandomResponse();
         double u = high - low;
-        double hammingDis = calHammingDis(bitVector1, bitVector2) / 1.1;
+        double hammingDis = calHammingDis(bitVector1, bitVector2) / ht;
         int size = bitVector1.length;
         double estimateDis;
         switch (method) {

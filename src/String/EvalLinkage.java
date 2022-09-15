@@ -66,7 +66,7 @@ public class EvalLinkage {
                     rec_attr_val_dict.put(entity_id, rec_attr_val_list);
                     if (salt_attr_col != -1) {
                         salt = lineArray[salt_attr_col];
-                        salt_dict.put(entity_id, salt);
+                        salt_dict.put(entity_id, salt.split("\\.")[0]);
                     }
                     line = br.readLine();
                 }
@@ -111,7 +111,7 @@ public class EvalLinkage {
     }
 
     public Map<String, BitSet> gen_clk_bf_dict(Map<String, List<String>> rec_q_gram_dict, Map<String, String> salt_dict,
-                                               String hardening_type, int bf_len) {
+                                               String hardening_type) {
         Map<String, BitSet> rec_clk_bf_dict = new HashMap<>(); // The dictionary of Bloom filters.
 
         //Multi-thread generate bloom filter
@@ -251,6 +251,7 @@ public class EvalLinkage {
                     List<String> rec_val_list = rec_attr_val_dict.get(entity_id);
                     List<String> rec_q_gram_list = this.encoding_method.qGramListForRec(rec_val_list);
                     synchronized (rec_q_gram_dict) {
+                        if (rec_q_gram_list.size() == 0) continue;
                         rec_q_gram_dict.put(entity_id, rec_q_gram_list);
                     }
                 }
@@ -269,6 +270,16 @@ public class EvalLinkage {
         return rec_q_gram_dict;
     }
 
+    public double cal_q_gram_sim(List<String> q_gram_list1, List<String> q_gram_list2) {
+        Set<String> q_gram_set1 = new HashSet<>(q_gram_list1);
+        int size1 = q_gram_set1.size();
+        Set<String> q_gram_set2 = new HashSet<>(q_gram_list2);
+        int size2 = q_gram_set2.size();
+        q_gram_set1.retainAll(q_gram_set2);
+
+        return q_gram_set1.size() / ((double)size1 + size2 - q_gram_set1.size());
+    }
+
     public double cal_bf_sim(BitSet bf1, BitSet bf2) {
         if (bf1 == null || bf2 == null) return 0.0;
         assert bf1.size() == bf2.size();
@@ -279,7 +290,7 @@ public class EvalLinkage {
         bf1.and(bf2);
         int num_common_ones = bf1.cardinality();
 
-        return (2.0 * num_common_ones) / (num_ones_bf1 + num_ones_bf2);
+        return num_common_ones / ((double)num_ones_bf1 + num_ones_bf2 - num_common_ones);
     }
 
     public List<List<Integer>> init_minhash(int lsh_band_size, int lsh_num_band) {
@@ -314,8 +325,8 @@ public class EvalLinkage {
         double t = Math.pow(1.0 / (double) lsh_num_band, 1.0 / (double) lsh_band_size);
 
         List<double[]> s_p_cand_list = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            double s = 0.1 * i;
+        for (int i = 10; i <= 20; i++) {
+            double s = 0.05 * i;
             double p_cand = 1.0 - Math.pow((1.0 - Math.pow(s, lsh_band_size)), lsh_num_band);
             s_p_cand_list.add(new double[]{s, p_cand});
         }
@@ -564,17 +575,17 @@ public class EvalLinkage {
             if (min_all_block_size >= num_rec_in_block) min_all_block_size = num_rec_in_block;
         }
 
-        // delete the block whose size is bigger than 100
-//        for (String block_key : block_delete_list) {
-//            block_dict.remove(block_key);
-//        }
+//         delete the block whose size is bigger than 100
+        for (String block_key : block_delete_list) {
+            block_dict.remove(block_key);
+        }
 
         System.out.printf("  Minimum, average and maximum block sizes (all blocks): %d / %.2f / %d%n", min_all_block_size,
                 (double) sum_all_block_size / all_block_size_list.size(), max_all_block_size);
         System.out.printf("    %d block only contain 1 entity%n", num_block_size1);
-//        System.out.printf("    Removed %d blocks larger than %d records, %d blocks left%n", num_large_block_del,
-//                MAX_BLOCK_SIZE, block_size_list.size());
-        System.out.printf("    %d blocks larger than %d records%n", num_large_block_del, MAX_BLOCK_SIZE);
+        System.out.printf("    Removed %d blocks larger than %d records, %d blocks left%n", num_large_block_del,
+                MAX_BLOCK_SIZE, block_size_list.size());
+//        System.out.printf("    %d blocks larger than %d records%n", num_large_block_del, MAX_BLOCK_SIZE);
         if (block_size_list.size() == 0) {
             System.out.println("    Warning: No blocks left");
         }
@@ -584,16 +595,11 @@ public class EvalLinkage {
                                                         Map<String, Set<String>> block_dict1,
                                                         Map<String, List<String>> val_dict2,
                                                         Map<String, Set<String>> block_dict2, double min_sim) {
-        assert min_sim >= 0.0;
-        assert min_sim <= 1.0;
         Map<String[], Double> rec_pair_dict = new HashMap<>();
 
         // Keep track of pairs compared so each pair is only compared once
         //
-        Set<String[]> pairs_compared_set = new HashSet<>();
-
-        // print("Similarity threshold based classification")
-        // print("  Minimum similarity of record pairs to be stored: %.2f" % (min_sim))
+//        Set<String[]> pairs_compared_set = new HashSet<>();
 
         // Iterate over all block values that occur in both data sets
         // multiThread
@@ -631,16 +637,13 @@ public class EvalLinkage {
                                 entity_id_pair[1] = entity_id1;
                             }
 
-                            if (!pairs_compared_set.contains(entity_id_pair)) {
-                                lock.lock();
-                                List<String> val2 = val_dict2.get(entity_id2);
-                                pairs_compared_set.add(entity_id_pair);
+                            List<String> val2 = val_dict2.get(entity_id2);
+//                            pairs_compared_set.add(entity_id_pair);
 
-                                double sim = hashing_method.cal_q_gram_sim(val1, val2); // Calculate the similarity
-
-                                if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
-                                lock.unlock();
-                            }
+                            double sim = cal_q_gram_sim(val1, val2); // Calculate the similarity
+                            lock.lock();
+                            if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
+                            lock.unlock();
                         }
                     }
                 }
@@ -654,15 +657,16 @@ public class EvalLinkage {
         }
 
         int num_all_comparisons = val_dict1.size() * val_dict2.size();
-        int num_pairs_compared = pairs_compared_set.size();
+//        int num_pairs_compared = pairs_compared_set.size();
 
-        System.out.printf("Compared %d record q-gram pairs (full comparison is %d record pairs)%n",
-                num_pairs_compared, num_all_comparisons);
+//        System.out.printf("Compared %d record q-gram pairs (full comparison is %d record pairs)%n",
+//                num_pairs_compared, num_all_comparisons);
+        System.out.printf("Full comparison is %d record pairs%n", num_all_comparisons);
 
         // print("  Reduction ratio: %2f" % (1.0 - float(num_pairs_compared) / num_all_comparisons))
         System.out.printf("  Stored %d record q-gram pairs with a similarity of at least %.2f%n", rec_pair_dict.size(), min_sim);
 
-        pairs_compared_set.clear();
+//        pairs_compared_set.clear();
 
         return rec_pair_dict;
     }
@@ -671,16 +675,11 @@ public class EvalLinkage {
                                                     Map<String, Set<String>> block_dict1,
                                                     Map<String, BitSet> val_dict2,
                                                     Map<String, Set<String>> block_dict2, double min_sim) {
-        assert min_sim >= 0.0;
-        assert min_sim <= 1.0;
         Map<String[], Double> rec_pair_dict = new HashMap<>();
 
         // Keep track of pairs compared so each pair is only compared once
         //
-        Set<String[]> pairs_compared_set = new HashSet<>();
-
-        // print("Similarity threshold based classification")
-        // print("  Minimum similarity of record pairs to be stored: %.2f" % (min_sim))
+//        Set<String[]> pairs_compared_set = new HashSet<>();
 
         // Iterate over all block values that occur in both data sets
         //
@@ -717,16 +716,13 @@ public class EvalLinkage {
                                 entity_id_pair[1] = entity_id1;
                             }
 
-                            if (!pairs_compared_set.contains(entity_id_pair)) {
-                                lock.lock();
-                                BitSet val2 = val_dict2.get(entity_id2);
-                                pairs_compared_set.add(entity_id_pair);
+                            BitSet val2 = val_dict2.get(entity_id2);
+//                                pairs_compared_set.add(entity_id_pair);
 
-                                double sim = cal_bf_sim(val1, val2); // Calculate the similarity
-
-                                if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
-                                lock.unlock();
-                            }
+                            double sim = cal_bf_sim(val1, val2); // Calculate the similarity
+                            lock.lock();
+                            if (sim >= min_sim) rec_pair_dict.put(entity_id_pair, sim);
+                            lock.unlock();
                         }
                     }
                 }
@@ -739,15 +735,16 @@ public class EvalLinkage {
             e.printStackTrace();
         }
         int num_all_comparisons = val_dict1.size() * val_dict2.size();
-        int num_pairs_compared = pairs_compared_set.size();
+//        int num_pairs_compared = pairs_compared_set.size();
 
-        System.out.printf("Compared %d record bf pairs (full comparison is %d record pairs)%n",
-                num_pairs_compared, num_all_comparisons);
+//        System.out.printf("Compared %d record bf pairs (full comparison is %d record pairs)%n",
+//                num_pairs_compared, num_all_comparisons);
+        System.out.printf("Full comparison is %d record pairs%n", num_all_comparisons);
 
         System.out.printf("  Stored %d record bf pairs with a similarity of at least %.2f%n",
                 rec_pair_dict.size(), min_sim);
 
-        pairs_compared_set.clear();
+//        pairs_compared_set.clear();
 
         return rec_pair_dict;
     }
@@ -806,14 +803,17 @@ public class EvalLinkage {
         return Double.parseDouble(String.format("%.4f", recall));
     }
 
-
-    private static void calc_precisions_recalls(double[] sim_threshold_list, Map<Double, int[]> class_res_dict, List<Double> precisions, List<Double> recalls) {
+    private static void calc_precisions_recalls_f1s(double[] sim_threshold_list, Map<Double, int[]> class_res_dict, List<Double> precisions, List<Double> recalls, List<Double> f1s) {
         int[] tp_fp_tn_fn;
         int tp;
         int fp;
         int fn;
         double precision;
         double recall;
+        double f1;
+        precisions.clear();
+        recalls.clear();
+        f1s.clear();
         for (double sim_threshold : sim_threshold_list) {
             tp_fp_tn_fn = class_res_dict.get(sim_threshold);
             tp = tp_fp_tn_fn[0];
@@ -823,6 +823,9 @@ public class EvalLinkage {
             precisions.add(precision);
             recall = calc_recall(tp, fn);
             recalls.add(recall);
+            if ((precision + recall) == 0) f1 = 0;
+            else f1 = 2 * precision * recall / (precision + recall);
+            f1s.add(Double.parseDouble(String.format("%.4f", f1)));
         }
     }
 
@@ -880,12 +883,12 @@ public class EvalLinkage {
     }
 
     // statistic Duplicated QGram
-    public void statisticDupQGram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q, boolean padded, String datasetName){
+    public void statisticDupQGram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q, boolean padded, String datasetName, boolean append) {
         List<Integer> qgramListSizes = new ArrayList<>();
         List<Integer> diffs = new ArrayList<>();
         int qgramListSize;
         List<String> qgramList;
-        for (String entityID : rec_q_gram_dict.keySet()){
+        for (String entityID : rec_q_gram_dict.keySet()) {
             qgramList = rec_q_gram_dict.get(entityID);
             qgramListSize = qgramList.size();
             qgramListSizes.add(qgramListSize);
@@ -901,7 +904,7 @@ public class EvalLinkage {
                 return;
             }
         }
-        String filename = filePath.toString() + String.format("/DuplicatedQGram-%s-q%d-padded%s.csv", datasetName, q, padded);
+        String filename = filePath.toString() + String.format("/DuplicatedQGram-%s-q%d-padded%s-append%s.csv", datasetName, q, padded, append);
         File file = new File(filename);
         try (FileWriter fw = new FileWriter(file, false);
              BufferedWriter bw = new BufferedWriter(fw)) {
@@ -926,11 +929,11 @@ public class EvalLinkage {
     // statistic every bit vector size / qgram list size
     public void statisticBDQ(String dataset, Map<String, List<String>> rec_q_gram_dict,
                              Map<String, BitSet> rec_bf_dict, String hashType, boolean appendFlag,
-                             String numOfHashfuncs, String datasetName){
+                             String numOfHashfuncs, String datasetName) {
         List<Integer> qgramListSizes = new ArrayList<>();
         List<Integer> bitSetSizes = new ArrayList<>();
         List<Double> divisions = new ArrayList<>();
-        for (String entityID : rec_q_gram_dict.keySet()){
+        for (String entityID : rec_q_gram_dict.keySet()) {
             int qgramSize = rec_q_gram_dict.get(entityID).size();
             int bitSetSize = rec_bf_dict.get(entityID).cardinality();
             qgramListSizes.add(qgramSize);
@@ -968,7 +971,7 @@ public class EvalLinkage {
         }
     }
 
-    public void storeResult(String filename, List<Double> precisions, List<Double> recalls) {
+    public void storeResult(String filename, List<Double> precisions, List<Double> recalls, List<Double> f1s) {
         File file = new File(filename);
         File filePath = new File(file.getParent());
         if (!filePath.exists()) {
@@ -987,10 +990,10 @@ public class EvalLinkage {
                 }
             }
 
-            String line = "precision,recall";
+            String line = "precision,recall,f1";
             bw.write(line + "\n");
             for (int i = 0; i < precisions.size(); i++) {
-                line = precisions.get(i) + "," + recalls.get(i);
+                line = precisions.get(i) + "," + recalls.get(i) + "," + f1s.get(i);
                 bw.write(line + "\n");
             }
         } catch (IOException e) {
@@ -998,7 +1001,7 @@ public class EvalLinkage {
         }
     }
 
-    public void storeQgram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q, boolean padded, String datasetName){
+    public void storeQgram(String dataset, Map<String, List<String>> rec_q_gram_dict, int q, boolean padded, String datasetName, boolean append) {
         File dataSetFile = new File(dataset);
         File filePath = new File(dataSetFile.getParent() + "/storeQgram/");
         if (!filePath.exists()) {
@@ -1007,7 +1010,7 @@ public class EvalLinkage {
                 return;
             }
         }
-        String filename = filePath.toString() + String.format("/QGram-%s-q%d-padded%s.csv", datasetName, q, padded);
+        String filename = filePath.toString() + String.format("/QGram-%s-q%d-padded%s-append%s.csv", datasetName, q, padded, append);
         File file = new File(filename);
         try (FileWriter fw = new FileWriter(file, false);
              BufferedWriter bw = new BufferedWriter(fw)) {
@@ -1020,7 +1023,7 @@ public class EvalLinkage {
 
             String line = "ID,QGram"; // ',' 容易其冲突
             bw.write(line + "\n");
-            for (String entityID : rec_q_gram_dict.keySet()){
+            for (String entityID : rec_q_gram_dict.keySet()) {
                 List<String> list = rec_q_gram_dict.get(entityID);
                 bw.write(String.format("%s,%s\n", entityID, strList2String(list).replace(",", " ")));
             }
@@ -1052,9 +1055,9 @@ public class EvalLinkage {
 
             String line = "ID,BF";
             bw.write(line + "\n");
-            for (String entityID : rec_bf_dict.keySet()){
+            for (String entityID : rec_bf_dict.keySet()) {
                 BitSet bitSet = rec_bf_dict.get(entityID);
-                bw.write(String.format("%s,%s\n", entityID, bitSet.toString().replace(","," ")));
+                bw.write(String.format("%s,%s\n", entityID, bitSet.toString().replace(",", " ")));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1083,7 +1086,7 @@ public class EvalLinkage {
 
             String line = "IDPair,Sim";
             bw.write(line + "\n");
-            for (String[] entityIDPair : bf_rec_pair_dict.keySet()){
+            for (String[] entityIDPair : bf_rec_pair_dict.keySet()) {
                 double sim = bf_rec_pair_dict.get(entityIDPair);
                 bw.write(String.format("%s,%.4f\n", strList2String(Arrays.stream(entityIDPair).toList()).replace(",", " "), sim));
             }
@@ -1092,7 +1095,7 @@ public class EvalLinkage {
         }
     }
 
-    private void storeQgramPair(String dataset, String datasetPair, Map<String[], Double> q_gram_rec_pair_dict, int q, boolean padded) {
+    private void storeQgramPair(String dataset, String datasetPair, Map<String[], Double> q_gram_rec_pair_dict, int q, boolean padded, boolean append) {
         File dataSetFile = new File(dataset);
         File filePath = new File(dataSetFile.getParent() + "/storeQGramPair/");
         if (!filePath.exists()) {
@@ -1101,7 +1104,7 @@ public class EvalLinkage {
                 return;
             }
         }
-        String filename = filePath.toString() + String.format("/QGramPair-%s-q%d-padded%s.csv", datasetPair, q, padded);
+        String filename = filePath.toString() + String.format("/QGramPair-%s-q%d-padded%s-append%s.csv", datasetPair, q, padded, append);
         File file = new File(filename);
         try (FileWriter fw = new FileWriter(file, false);
              BufferedWriter bw = new BufferedWriter(fw)) {
@@ -1114,7 +1117,7 @@ public class EvalLinkage {
 
             String line = "IDPair,Sim";
             bw.write(line + "\n");
-            for (String[] entityIDPair : q_gram_rec_pair_dict.keySet()){
+            for (String[] entityIDPair : q_gram_rec_pair_dict.keySet()) {
                 double sim = q_gram_rec_pair_dict.get(entityIDPair);
                 bw.write(String.format("%s,%.4f\n", strList2String(Arrays.stream(entityIDPair).toList()).replace(",", " "), sim));
             }
@@ -1127,13 +1130,12 @@ public class EvalLinkage {
     public static void main(String[] args) {
         String res_plot_file_name = "/Users/takafumikai/PycharmProjects/LDP-BV/result/result-auc.png";
         String data_set_file_name1 = "D:/dataset/ncvoter/ncvoter-s-50000-1.csv";
-        String dataset1 = "s-1";
+        String dataset1 = "s-1-1";
         String data_set_file_name2 = "D:/dataset/ncvoter/ncvoter-s-50000-1.csv";
-        String dataset2 = "s-1";
+        String dataset2 = "s-1-2";
         String bitFreqFilePath = "D:/dataset/ncvoter/freq/";
         String pairsFile = "D:/dataset/DBLP-ACM/DBLP-ACM_perfectMapping1.csv";
-        String dateDiff = "none";
-        int[] attr_index_list = {1, 2, 4, 5};  // attr's columns used
+        int[] attr_index_list = {1};  // attr's columns used
         int entity_id_col = 0;
         int salt_attr_index = 6; // for salt
         double[] sim_threshold_list = {0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0};
@@ -1142,7 +1144,7 @@ public class EvalLinkage {
         boolean padded = false;
         int bf_len = 1000;
         String[] hash_type_list = new String[]{"dh-false", "dh-true", "rh-false", "rh-true"};
-        String[] num_hash_functions_list = {"10", "20", "30"};
+        String[] num_hash_functions_list = {"opt"};
         String[] encode_type_list = {"clk"};
         String[] bf_harden_types = new String[]{
                 "none",
@@ -1256,17 +1258,6 @@ public class EvalLinkage {
         Map<String, String> pairs = null;
         if (dataset1.contains("ACM") || dataset1.contains("DBLP")) pairs = evalLinkage.load_pairs(pairsFile);
 
-
-        // Combine into one list for later use
-        //
-        List<List<String>> all_rec_list = new ArrayList<>();
-        for (String entity_id : rec_attr_val_dict1.keySet()) {
-            all_rec_list.add(rec_attr_val_dict1.get(entity_id));
-        }
-        for (String entity_id : rec_attr_val_dict2.keySet()) {
-            all_rec_list.add(rec_attr_val_dict2.get(entity_id));
-        }
-
         for (String hash_type : hash_type_list) {
             // Initialise the hashing method
             //
@@ -1283,8 +1274,10 @@ public class EvalLinkage {
             // Store precision and recall result
             List<Double> qgramPrecisions = new ArrayList<>();
             List<Double> qgramRecalls = new ArrayList<>();
+            List<Double> qgramF1s = new ArrayList<>();
             List<List<Double>> enc_prec_list = new ArrayList<>();
             List<List<Double>> enc_reca_list = new ArrayList<>();
+            List<List<Double>> enc_f1_list = new ArrayList<>();
 
             // Initialize the legend list
             List<String> legend_str_list = new ArrayList<>();
@@ -1343,16 +1336,16 @@ public class EvalLinkage {
                             // dictionary for data set1
                             //
                             rec_q_gram_dict1 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict1);
-                            evalLinkage.statisticDupQGram(data_set_file_name1, rec_q_gram_dict1, q, padded, dataset1);
+                            evalLinkage.statisticDupQGram(data_set_file_name1, rec_q_gram_dict1, q, padded, dataset1, appendCntFlag);
                             // Generate q-grams for the attribute value lists and add into a
                             // dictionary for data set2
                             //
                             rec_q_gram_dict2 = evalLinkage.gen_q_gram_dict(rec_attr_val_dict2);
-                            evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q, padded, dataset2);
+                            evalLinkage.statisticDupQGram(data_set_file_name2, rec_q_gram_dict2, q, padded, dataset2, appendCntFlag);
 
                             // store q gram
-                            evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded, dataset1);
-                            evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded, dataset2);
+                            evalLinkage.storeQgram(data_set_file_name1, rec_q_gram_dict1, q, padded, dataset1, appendCntFlag);
+                            evalLinkage.storeQgram(data_set_file_name2, rec_q_gram_dict2, q, padded, dataset2, appendCntFlag);
 
                             // Set num of hash functions
                             if (num_hash_functions.equals("opt")) {
@@ -1360,6 +1353,7 @@ public class EvalLinkage {
                             } else {
                                 evalLinkage.hashing_method.num_hash_function = Integer.parseInt(num_hash_functions);
                             }
+                            System.out.printf("Optimal k for %s and %s is : %d\n", dataset1, dataset2, evalLinkage.hashing_method.num_hash_function);
                         }
 
                         // Initalise the hardening method if needed
@@ -1368,10 +1362,8 @@ public class EvalLinkage {
                             harden_method = null;
                         else if (bf_harden_type.equals("bal")) {
                             harden_method = new Balancing("Balancing", bf_len);
-                            bf_len *= 2;
                         } else if (bf_harden_type.equals("xor")) {
                             harden_method = new XorFolding("Xor-fold", bf_len);
-                            bf_len /= 2;
                         } else if (bf_harden_type.equals("r90")) {
                             harden_method = new Rule90("Rule 90", bf_len);
                         } else if (bf_harden_type.startsWith("blip")) {
@@ -1380,7 +1372,7 @@ public class EvalLinkage {
                         //TODO MarkovChain Harden
                         else if (bf_harden_type.startsWith("wxor")) {
                             harden_method = new Wxor(String.format("WXOR %d", w_size), w_size, bf_len);
-                        } else if (bf_harden_type.equals("rexor")) {
+                        } else if (bf_harden_type.equals("rxor")) {
                             harden_method = new ResamXor("REXOR", bf_len);
                         } else if (bf_harden_type.startsWith("urap")) {
                             harden_method = new Urap(String.format("Urap %.2f %.2f", ratio, epsilon), ratio, epsilon,
@@ -1402,8 +1394,8 @@ public class EvalLinkage {
                         Map<String, BitSet> rec_bf_dict1;
                         Map<String, BitSet> rec_bf_dict2;
                         if (encode_type.equals("clk")) {
-                            rec_bf_dict1 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict1, salt_dict1, bf_harden_type, bf_len);
-                            rec_bf_dict2 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict2, salt_dict2, bf_harden_type, bf_len);
+                            rec_bf_dict1 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict1, salt_dict1, bf_harden_type);
+                            rec_bf_dict2 = evalLinkage.gen_clk_bf_dict(rec_q_gram_dict2, salt_dict2, bf_harden_type);
                         } else {
                             rec_bf_dict1 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict1, salt_dict1, bf_harden_type, bf_len);
                             rec_bf_dict2 = evalLinkage.gen_rbf_bf_dict(rec_attr_val_dict2, salt_dict2, bf_harden_type, bf_len);
@@ -1480,7 +1472,7 @@ public class EvalLinkage {
 
                             q_gram_linkage_time = new Date().getTime() - start_time;
                             q_gram_class_res_dict = evalLinkage.calc_linkage_outcomes(q_gram_rec_pair_dict, sim_threshold_list, pairs);
-                            evalLinkage.storeQgramPair(data_set_file_name1, dataset1 + dataset2, q_gram_rec_pair_dict, q, padded);
+                            evalLinkage.storeQgramPair(data_set_file_name1, dataset1 + dataset2, q_gram_rec_pair_dict, q, padded, appendCntFlag);
                         }
 
                         start_time = new Date().getTime();
@@ -1504,30 +1496,31 @@ public class EvalLinkage {
                         // Calculate precision and recall values for the different thresholds
                         //
                         if (times == 0) {
-                            calc_precisions_recalls(sim_threshold_list, q_gram_class_res_dict, qgramPrecisions, qgramRecalls);
+                            calc_precisions_recalls_f1s(sim_threshold_list, q_gram_class_res_dict, qgramPrecisions, qgramRecalls, qgramF1s);
 
                             String qgramResultFilePath = new File(data_set_file_name1).getParent();
                             String qgramResultFilename = String.format("q%d-padded%s-appendCntFlag%s.csv", q, padded, appendCntFlag);
                             String qgramResultFile = qgramResultFilePath + "/result/" + qgramResultFilename;
-                            evalLinkage.storeResult(qgramResultFile, qgramPrecisions, qgramRecalls);
+                            evalLinkage.storeResult(qgramResultFile, qgramPrecisions, qgramRecalls, qgramF1s);
                         }
                         List<Double> bfPrecisions = new ArrayList<>();
                         List<Double> bfRecalls = new ArrayList<>();
+                        List<Double> bfF1s = new ArrayList<>();
 
-                        calc_precisions_recalls(sim_threshold_list, bf_class_res_dict, bfPrecisions, bfRecalls);
+                        calc_precisions_recalls_f1s(sim_threshold_list, bf_class_res_dict, bfPrecisions, bfRecalls, bfF1s);
                         System.out.printf("similarity threshold: %s%n", Arrays.toString(sim_threshold_list));
                         System.out.printf("q prec: %s%n", qgramPrecisions);
                         System.out.printf("q reca: %s%n", qgramRecalls);
+                        System.out.printf("q f1: %s%n", qgramF1s);
                         System.out.printf("bf prec:%s%n", bfPrecisions);
                         System.out.printf("bf reca: %s%n", bfRecalls);
+                        System.out.printf("bf f1: %s%n", bfF1s);
 
                         enc_prec_list.add(bfPrecisions);
                         enc_reca_list.add(bfRecalls);
+                        enc_f1_list.add(bfF1s);
 
                         times += 1;
-
-                        if (bf_harden_type.equals("bal")) bf_len = bf_len / 2;
-                        if (bf_harden_type.equals("xor")) bf_len = bf_len * 2;
 
                         legend_str_list.add(encode_type.toUpperCase(Locale.ROOT));
 
@@ -1535,11 +1528,10 @@ public class EvalLinkage {
                         String resultFilename = String.format("%s-q%d-k%s-bflen%d.csv", bf_harden_type, q, num_hash_functions, bf_len);
                         String resultFile = resultFilePath + String.format("/result/%s/%s/",
                                 encode_type.toUpperCase(Locale.ROOT), hash_type.toUpperCase(Locale.ROOT)) + resultFilename;
-                        evalLinkage.storeResult(resultFile, bfPrecisions, bfRecalls);
+                        evalLinkage.storeResult(resultFile, bfPrecisions, bfRecalls, bfF1s);
                         // Print a line with summary memory and timing results
                         System.out.printf("Result saved in %s, block time: %d, q-gram link time: %d, bf link time: %d %n",
                                 resultFile, blocking_time, q_gram_linkage_time, bf_linkage_time);
-
                     }
                 }
                 //TODO 画图
@@ -1553,8 +1545,6 @@ public class EvalLinkage {
 //                    save_fig_name=res_plot_file_name.replace("auc", "split"),aspect_ratio=PLOT_RATIO)
             }
         }
-        return;
+        evalLinkage.threadPool.shutdown();
     }
-
-
 }

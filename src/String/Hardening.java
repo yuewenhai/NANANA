@@ -72,9 +72,9 @@ class XorFolding extends Hardening {
 
     @Override
     public BitSet harden_bf(BitSet bf) {
-        int bf_len = this.bfLen / 2;
-        BitSet pre_half_bf = bf.get(0, bf_len - 1);
-        BitSet suf_half_bf = bf.get(bf_len, this.bfLen - 1);
+        int half_bf_len = this.bfLen / 2;
+        BitSet pre_half_bf = bf.get(0, half_bf_len - 1);
+        BitSet suf_half_bf = bf.get(half_bf_len, this.bfLen - 1);
 
         pre_half_bf.xor(suf_half_bf);
         return pre_half_bf;
